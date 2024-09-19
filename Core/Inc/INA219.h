@@ -8,6 +8,10 @@
 #ifndef INC_INA219_H_
 #define INC_INA219_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define INA219_ADDRESS 							(0x40)
 
 //
@@ -92,6 +96,8 @@ void INA219_setPowerMode(INA219_t *ina219, uint8_t Mode);
 uint16_t Read16(INA219_t *ina219, uint8_t Register);
 void Write16(INA219_t *ina219, uint8_t Register, uint16_t Value);
 
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* INC_INA219_H_ */
