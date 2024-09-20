@@ -5,7 +5,9 @@
     "extra_flags": "-DSTM32F4xx -DSTM32F479xx",
     "f_cpu": "180000000L",
     "mcu": "stm32f479iihx",
-    "product_line": "STM32F479xx"
+    "product_line": "STM32F479xx",
+    "variant_dir": "variants",
+    "variant": "STM32F4xx/F469IIHX"
   },
   "connectivity": [
     "can"
@@ -13,7 +15,7 @@
   "debug": {
     "jlink_device": "STM32F479iihx",
     "openocd_target": "stm32f4x",
-    "svd_path": "STM32F479.svd"
+    "svd_path": "STM32F46_79x.svd"
   },
   "frameworks": [
     "arduino",
@@ -32,6 +34,6 @@
       "blackmagic"
     ]
   },
-  "url": "https://www.etri.re.kr",
-  "vendor": "ETRI"
+  "url": "https://www.st.com/en/microcontrollers-microprocessors/stm32f469-479.html",
+  "vendor": "ST"
 }
