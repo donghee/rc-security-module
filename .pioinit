@@ -3,3 +3,6 @@ target extended-remote :3333
 
 set mem inaccessible-by-default off
 load .pio/build/genericSTM32F479IIHX/firmware.elf
+
+c
+f CRSF::readPacket()

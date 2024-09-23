@@ -1,15 +1,15 @@
 # RC Security Module
 
-STM32F469IIHx
+STM32F479IIHx
 
-## Connection
+## Connections
 
 ```mermaid
 graph TD;
     A[RC Controller] --> B[RC Security Module]
     B --> C[RC Transmitter]
-    D[RC Receiver] --> B
-    B --> E[Flight Controller]
+    D[RC Receiver] --> E[RC Security Module]
+    E --> F[Flight Controller]
 ```
 
 ### Debug Connector Pin Out
@@ -35,3 +35,15 @@ graph TD;
 | 6          | UART5 TX    |
 | 7          | UART5 RX    |
 | 8          | GND         |
+
+### UART Pinmap
+```
+// PA10     ------> USART1_RX
+// PA9      ------> USART1_TX
+
+// PC11     ------> UART4_RX
+// PC10     ------> UART4_TX
+
+// PC2      ------> UART5_RX
+// PC12     ------> UART5_RX
+```
