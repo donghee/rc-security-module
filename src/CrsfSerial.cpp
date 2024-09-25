@@ -63,7 +63,7 @@ void CrsfSerial::handleSerialIn()
         {
             if (onOobData)
                 onOobData(b);
-           continue;
+            continue;
         }
 
         _rxBuf[_rxBufPos++] = b;
@@ -239,13 +239,11 @@ void CrsfSerial::packetGps(const crsf_header_t *p)
 void CrsfSerial::write(uint8_t b)
 {
     _port.write(b);
-    _port.flush();
 }
 
 void CrsfSerial::write(const uint8_t *buf, size_t len)
 {
     _port.write(buf, len);
-    _port.flush();
 }
 
 void CrsfSerial::queuePacket(uint8_t addr, uint8_t type, const void *payload, uint8_t len)

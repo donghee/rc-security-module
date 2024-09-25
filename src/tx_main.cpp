@@ -21,11 +21,13 @@ void packetChannels() {
 
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   crsf_transmitter.write(buf, len);
+  Serial.flush();
   // DebugSerial.print("Radio Transmitter->ELRS TX: ");
 }
 
 void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
   radio_transmitter.write(buf, len);
+  Serial1.flush();
   // DebugSerial.print("ELRS TX->Radio Transmitter: ");
 }
 
