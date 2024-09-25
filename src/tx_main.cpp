@@ -2,6 +2,10 @@
 #include "crc8.h"
 #include "CrsfSerial.h"
 
+#include "gcm.h"
+
+GCM lea_gcm;
+
 // connected to radio transmitter
 CrsfSerial radio_transmitter(Serial1, 400000);
 
@@ -11,19 +15,29 @@ CrsfSerial crsf_transmitter(Serial, 400000);
 HardwareSerial Serial1(USART1);
 HardwareSerial DebugSerial(UART5);
 
-void sendMspData() {
+
+void sendMspData(uint8_t* payload, uint8_t payload_len) {
   static uint8_t counter = 0;
+  int ret = 0;
   Crc8 _crc = Crc8(0xd5);
 
-  uint8_t len = 18;
-  uint8_t payload[] = {CRSF_ADDRESS_FLIGHT_CONTROLLER, 0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, };
+  uint8_t len = 19;
   uint8_t buf[CRSF_MAX_PACKET_SIZE];
+  uint8_t ciphertext[LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE];
+  //uint8_t payload[17] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x10 };
+
+  ret = lea_gcm.encrypt(payload, ciphertext, LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // buf is ciphertext
+  if (ret < 0) {
+    DebugSerial.println("Encryption failed");
+    return;
+  }
 
   buf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
   buf[1] = len + 2; // type + payload + crc
   buf[2] = CRSF_FRAMETYPE_MSP_WRITE;
-  memcpy(&buf[3], payload, len); 
-  buf[5] = counter++;
+  buf[3] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+  buf[4] = 0;
+  memcpy(&buf[5], ciphertext, LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); 
   buf[len+3] = _crc.calc(&buf[2], len + 1);
 
   crsf_transmitter.write(buf, len + 4);
@@ -49,7 +63,8 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   crsf_transmitter.write(buf, len);
   Serial.flush();
 
-  sendMspData(); // send msp to flight controller from security module
+  const crsf_header_t *p = (crsf_header_t *)buf;
+  sendMspData((uint8_t*)(p->data), LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // send msp to flight controller from security module
   // DebugSerial.print("Radio Transmitter->ELRS TX: ");
 }
 
@@ -81,6 +96,8 @@ void setup() {
   DebugSerial.setTx(PC_12);
   DebugSerial.setRx(PD_2);
   DebugSerial.begin(420000);
+
+  lea_gcm.init();
 }
 
 void loop() {

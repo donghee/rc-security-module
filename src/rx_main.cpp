@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include "CrsfSerial.h"
 
+#include "gcm.h"
+
+GCM lea_gcm;
 // connected to flight controller
 CrsfSerial flight_controller(Serial1, 420000);
 
@@ -25,6 +28,9 @@ void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
 }
 
 void to_flight_controller(const uint8_t* buf, uint8_t len) {
+  int ret = 0;
+  uint8_t plaintext[OTA8_PACKET_SIZE];
+
   static int counter = 0;
   flight_controller.write(buf, len);
   Serial1.flush();
@@ -33,23 +39,70 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
 
   if (hdr->device_addr == CRSF_ADDRESS_FLIGHT_CONTROLLER)
   {
+    // if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
+    //
+    //   counter++;
+    //   DebugSerial.print(counter);
+    //   DebugSerial.print(" MSP_WRITE: ");
+    //   DebugSerial.print(hdr->type, HEX);
+    //   DebugSerial.print(" ");
+    //   for (int i = 0; i < hdr->frame_size - 2; i++) {
+    //     DebugSerial.print(hdr->data[i], HEX);
+    //     DebugSerial.print(" ");
+    //   }
+    //   DebugSerial.println();
+    // }
+    
+    // Decrypt
     if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
-      counter++;
-      DebugSerial.print(counter);
-      DebugSerial.print(" MSP_WRITE: ");
-      DebugSerial.print(hdr->type, HEX);
-      DebugSerial.print(" ");
-      for (int i = 0; i < hdr->frame_size - 2; i++) {
-        DebugSerial.print(hdr->data[i], HEX);
-        DebugSerial.print(" ");
+      // TODO: why data[2]? should be data[3]?
+      ret = lea_gcm.decrypt(plaintext, &hdr->data[2], LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE);
+      if (ret < 0) {
+        DebugSerial.println("Decryption failed");
+        return;
       }
-      DebugSerial.println();
-    }
-  } 
+
+      // DebugSerial.print("Decrypted: ");
+      // for (int i = 0; i < OTA8_PACKET_SIZE; i++) {
+      //   DebugSerial.print(plaintext[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
+     crsf_channels_t *ch = (crsf_channels_t *)&plaintext;
+     int ch0 = ch->ch0;
+     int ch1 = ch->ch1;
+     int ch2 = ch->ch2;
+     int ch3 = ch->ch3;
+     int ch4 = ch->ch4;
+     int ch5 = ch->ch5;
+     int ch6 = ch->ch6;
+     int ch7 = ch->ch7;
+
+     DebugSerial.print("RC Channels: ");
+     DebugSerial.print(ch0);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch1);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch2);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch3);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch4);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch5);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch6);
+     DebugSerial.print(" ");
+     DebugSerial.print(ch7);
+     DebugSerial.print(" ");
+     DebugSerial.println();
+    } 
+  }
+
 
 }
 
-void setup() {
+void setup() {  
   SystemClock_Config();
 
   // Flight Controller: UART1
@@ -71,6 +124,8 @@ void setup() {
   DebugSerial.setTx(PC_12);
   DebugSerial.setRx(PD_2);
   DebugSerial.begin(420000);
+
+  lea_gcm.init();
 }
 
 void loop() {
