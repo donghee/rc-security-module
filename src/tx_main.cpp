@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "crc8.h"
 #include "CrsfSerial.h"
 
 // connected to radio transmitter
@@ -9,6 +10,31 @@ CrsfSerial crsf_transmitter(Serial, 400000);
 
 HardwareSerial Serial1(USART1);
 HardwareSerial DebugSerial(UART5);
+
+void sendMspData() {
+  static uint8_t counter = 0;
+  Crc8 _crc = Crc8(0xd5);
+
+  uint8_t len = 18;
+  uint8_t payload[] = {CRSF_ADDRESS_FLIGHT_CONTROLLER, 0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, };
+  uint8_t buf[CRSF_MAX_PACKET_SIZE];
+
+  buf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+  buf[1] = len + 2; // type + payload + crc
+  buf[2] = CRSF_FRAMETYPE_MSP_WRITE;
+  memcpy(&buf[3], payload, len); 
+  buf[5] = counter++;
+  buf[len+3] = _crc.calc(&buf[2], len + 1);
+
+  crsf_transmitter.write(buf, len + 4);
+
+  DebugSerial.print("Sending MSP Data: ");
+  for (int i = 0; i < len + 4; i++) {
+    DebugSerial.print(buf[i], HEX);
+    DebugSerial.print(" ");
+  }
+  DebugSerial.println();
+}
 
 void packetChannels() {
   DebugSerial.print("RC Channels: ");
@@ -22,6 +48,8 @@ void packetChannels() {
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   crsf_transmitter.write(buf, len);
   Serial.flush();
+
+  sendMspData(); // send msp to flight controller from security module
   // DebugSerial.print("Radio Transmitter->ELRS TX: ");
 }
 
@@ -37,15 +65,13 @@ void setup() {
   // RC Controller: UART1
   Serial1.setTx(PA_9);
   Serial1.setRx(PA_10);
-  // Serial1.begin(420000);
 
   // RF Module: UART4
   Serial.setTx(PC_10);
   Serial.setRx(PC_11);
-  //Serial.begin(420000);
 
   radio_transmitter.begin();
-  // radio_transmitter.onPacketChannels = &packetChannels;
+  radio_transmitter.onPacketChannels = &packetChannels;
   radio_transmitter.onForward = &to_crsf_transmitter;
 
   crsf_transmitter.begin();

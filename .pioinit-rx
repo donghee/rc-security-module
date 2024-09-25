@@ -1,0 +1,10 @@
+set pagination off
+
+file .pio/build/RX/firmware.elf
+target extended-remote :3334
+
+set mem inaccessible-by-default off
+load .pio/build/RX/firmware.elf
+
+c
+f CRSF::readPacket()
