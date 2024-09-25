@@ -5,11 +5,13 @@ STM32F479IIHx
 ## Connections
 
 ```mermaid
-graph TD;
-    A[RC Controller] --> B[RC Security Module]
-    B --> C[RC Transmitter]
-    D[RC Receiver] --> E[RC Security Module]
-    E --> F[Flight Controller]
+flowchart TD;
+    A[RC Controller] -- CRSF/UART --> B[RC Security Module]
+    B -- CRSF/UART --> C[RF Transmitter]
+    D[RF Receiver] -- CRSF/UART --> E[RC Security Module]
+    E -- CRSF/UART --> F[Flight Controller]
+
+    C[RF Transmitter] <-. OTA/📡↔️📡 .-> D[RF Receiver]
 ```
 
 ### Debug Connector Pin Out
@@ -47,3 +49,7 @@ graph TD;
 // PC2      ------> UART5_RX
 // PC12     ------> UART5_RX
 ```
+
+### CRSF protocol
+
+https://github.com/crsf-wg/crsf/wiki

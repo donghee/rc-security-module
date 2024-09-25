@@ -1,3 +1,5 @@
+set pagination off
+
 file .pio/build/genericSTM32F479IIHX/firmware.elf
 target extended-remote :3333
 
