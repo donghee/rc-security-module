@@ -39,6 +39,9 @@ flowchart TD;
 | 8          | GND         |
 
 ### UART Pinmap
+
+STM32F479IIHx UART Pinmap
+
 ```
 // PA10     ------> USART1_RX
 // PA9      ------> USART1_TX
@@ -53,3 +56,43 @@ flowchart TD;
 ### CRSF protocol
 
 https://github.com/crsf-wg/crsf/wiki
+
+```mermaid
+sequenceDiagram
+    participant TX as Transmitter
+    participant RX as Receiver
+    participant FC as Flight Controller
+
+    Note over TX,FC: CRSF Frame Structure
+    Note over TX,FC: [Device Address][Frame Length][Type][Payload][CRC]
+
+    TX->>RX: RC Channels Data
+    TX->>RX: Link Statistics
+    RX->>FC: RC Channels Data
+    RX->>FC: Link Statistics
+    TX->>RX: Telemetry Data
+    RX->>FC: Telemetry Data
+    FC->>RX: Telemetry Data
+    RX->>TX: Telemetry Data
+
+    Note over TX,FC: Bidirectional Communication
+```
+
+이 다이어그램은 CRSF 프로토콜의 기본 구조와 데이터 흐름을 보여줍니다:
+- 프레임 구조: Device Address, Frame Length, Type, Payload, CRC
+- 송신기(TX)에서 수신기(RX)로 RC 채널 데이터와 링크 통계 전송
+- 수신기(RX)에서 비행 컨트롤러(FC)로 RC 채널 데이터와 링크 통계 전달
+- 비행 컨트롤러(FC)에서 수신기(RX)로 텔레메트리 데이터 전송
+- 수신기(RX)에서 송신기(TX)로 텔레메트리 데이터 전달
+- 양방향 통신 지원
+
+## Setup
+
+PlatformIO 설치
+
+```
+curl -fsSL -o get-platformio.py https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py
+python3 get-platformio.py
+```
+
+
