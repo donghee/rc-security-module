@@ -5,7 +5,7 @@ STM32F479IIHx
 ## Connections
 
 ```mermaid
-flowchart TD;
+flowchart LR;
     A[RC Controller] -- CRSF/UART --> B[RC Security Module]
     B -- CRSF/UART --> C[RF Transmitter]
     D[RF Receiver] -- CRSF/UART --> E[RC Security Module]
