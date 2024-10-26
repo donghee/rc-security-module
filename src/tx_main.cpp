@@ -58,7 +58,7 @@ void packetChannels() {
   DebugSerial.print("TX RC Channels: ");
   // for (int i = 0; i < 16; i++) {
   for (int i = 0; i < 8; i++) {
-    DebugSerial.print(radio_transmitter.getChannel(i + 1) - 508);
+    DebugSerial.print(radio_transmitter.getChannel(i + 1));
     DebugSerial.print(" ");
   }
   DebugSerial.println();
