@@ -12,9 +12,10 @@ CrsfSerial crsf_receiver(Serial, 420000);
 
 HardwareSerial Serial1(USART1);
 HardwareSerial DebugSerial(UART5);
+static unsigned long lastRecvMspTime = 0;
 
 void packetChannels() {
-  DebugSerial.print("RC Channels: ");
+  DebugSerial.print("RX RC Channels: ");
   for (int i = 0; i < 16; i++) {
     DebugSerial.print(crsf_receiver.getChannel(i + 1));
     DebugSerial.print(" ");
@@ -32,8 +33,8 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
   uint8_t plaintext[OTA8_PACKET_SIZE];
 
   static int counter = 0;
-  flight_controller.write(buf, len);
-  Serial1.flush();
+  // flight_controller.write(buf, len);
+  // Serial1.flush();
 
   const crsf_header_t *hdr = (crsf_header_t *)buf;
 
@@ -62,6 +63,17 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
         return;
       }
 
+      unsigned long currentTime = millis();
+      unsigned long timeDiff = currentTime - lastRecvMspTime;
+
+      // 실행 주기 출력: TODO RX interval up to 7.5ms
+      DebugSerial.print("RX interval: ");
+      DebugSerial.print(timeDiff);
+      DebugSerial.println(" ms");
+
+      // 현재 시간을 마지막 실행 시간으로 저장
+      lastRecvMspTime = currentTime;
+
       // DebugSerial.print("Decrypted: ");
       // for (int i = 0; i < OTA8_PACKET_SIZE; i++) {
       //   DebugSerial.print(plaintext[i], HEX);
@@ -78,7 +90,7 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
      int ch6 = ch->ch6;
      int ch7 = ch->ch7;
 
-     DebugSerial.print("RC Channels: ");
+     DebugSerial.print("RX RC Channels: ");
      DebugSerial.print(ch0);
      DebugSerial.print(" ");
      DebugSerial.print(ch1);
@@ -96,13 +108,13 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
      DebugSerial.print(ch7);
      DebugSerial.print(" ");
      DebugSerial.println();
-    } 
+    }
   }
 
 
 }
 
-void setup() {  
+void setup() {
   SystemClock_Config();
 
   // Flight Controller: UART1

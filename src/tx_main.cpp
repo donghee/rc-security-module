@@ -15,6 +15,9 @@ CrsfSerial crsf_transmitter(Serial, 400000);
 HardwareSerial Serial1(USART1);
 HardwareSerial DebugSerial(UART5);
 
+static unsigned long lastSendMspTime = 0;
+
+void encryptedPacketChannels(uint8_t* buf, uint8_t len);
 
 void sendMspData(uint8_t* payload, uint8_t payload_len) {
   static uint8_t counter = 0;
@@ -24,7 +27,6 @@ void sendMspData(uint8_t* payload, uint8_t payload_len) {
   uint8_t len = 19;
   uint8_t buf[CRSF_MAX_PACKET_SIZE];
   uint8_t ciphertext[LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE];
-  //uint8_t payload[17] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x10 };
 
   ret = lea_gcm.encrypt(payload, ciphertext, LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // buf is ciphertext
   if (ret < 0) {
@@ -41,8 +43,11 @@ void sendMspData(uint8_t* payload, uint8_t payload_len) {
   buf[len+3] = _crc.calc(&buf[2], len + 1);
 
   crsf_transmitter.write(buf, len + 4);
+  //  encryptedPacketChannels(buf, len);
+}
 
-  DebugSerial.print("Sending MSP Data: ");
+void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
+  DebugSerial.print("Encrypted RC Channels: ");
   for (int i = 0; i < len + 4; i++) {
     DebugSerial.print(buf[i], HEX);
     DebugSerial.print(" ");
@@ -51,21 +56,36 @@ void sendMspData(uint8_t* payload, uint8_t payload_len) {
 }
 
 void packetChannels() {
-  DebugSerial.print("RC Channels: ");
-  for (int i = 0; i < 16; i++) {
-    DebugSerial.print(radio_transmitter.getChannel(i + 1));
+  DebugSerial.print("TX RC Channels: ");
+  // for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 8; i++) {
+    DebugSerial.print(radio_transmitter.getChannel(i + 1) - 508);
     DebugSerial.print(" ");
   }
   DebugSerial.println();
 }
 
+
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
+  const crsf_header_t *hdr = (crsf_header_t *)buf;
   crsf_transmitter.write(buf, len);
   Serial.flush();
 
-  const crsf_header_t *p = (crsf_header_t *)buf;
-  sendMspData((uint8_t*)(p->data), LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // send msp to flight controller from security module
+  if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
+    sendMspData((uint8_t*)(hdr->data), LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // send msp to flight controller from security module
+    unsigned long currentTime = millis();
+    unsigned long timeDiff = currentTime - lastSendMspTime;
+
+    // 실행 주기 출력
+    DebugSerial.print("TX interval: ");
+    DebugSerial.print(timeDiff);
+    DebugSerial.println(" ms");
+
+    // 현재 시간을 마지막 실행 시간으로 저장
+    lastSendMspTime = currentTime;
+  }
   // DebugSerial.print("Radio Transmitter->ELRS TX: ");
+  // DebugSerial.println("TX RC Channels: 992 992 173 992 173 173 173 173");
 }
 
 void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
@@ -81,7 +101,7 @@ void setup() {
   Serial1.setTx(PA_9);
   Serial1.setRx(PA_10);
 
-  // RF Module: UART4
+  // RF Module: qUART4
   Serial.setTx(PC_10);
   Serial.setRx(PC_11);
 
