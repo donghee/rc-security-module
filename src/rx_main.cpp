@@ -3,6 +3,8 @@
 
 #include "gcm.h"
 
+#define MAX_PLAINTEXT_PACKET_SIZE 32
+
 GCM lea_gcm;
 // connected to flight controller
 CrsfSerial flight_controller(Serial1, 420000);
@@ -29,8 +31,8 @@ void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
 }
 
 void to_flight_controller(const uint8_t* buf, uint8_t len) {
-  int ret = 0;
-  uint8_t plaintext[OTA8_PACKET_SIZE];
+  int plaintext_len = 0;
+  uint8_t plaintext[MAX_PLAINTEXT_PACKET_SIZE];
 
   static int counter = 0;
   // flight_controller.write(buf, len);
@@ -53,12 +55,12 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
     //   }
     //   DebugSerial.println();
     // }
-    
+
     // Decrypt
     if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
       // TODO: why data[2]? should be data[3]?
-      ret = lea_gcm.decrypt(plaintext, &hdr->data[2], LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE);
-      if (ret < 0) {
+      plaintext_len = lea_gcm.decrypt(&hdr->data[2], hdr->frame_size - 4, plaintext);
+      if (plaintext_len < 0) {
         DebugSerial.println("Decryption failed");
         return;
       }
@@ -75,7 +77,7 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       lastRecvMspTime = currentTime;
 
       // DebugSerial.print("Decrypted: ");
-      // for (int i = 0; i < OTA8_PACKET_SIZE; i++) {
+      // for (int i = 0; i < plaintext_len; i++) {
       //   DebugSerial.print(plaintext[i], HEX);
       //   DebugSerial.print(" ");
       // }
