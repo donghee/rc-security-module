@@ -42,7 +42,7 @@ private:
 
     // uint8_t payload[LEA_MAX_PAYLOAD_SIZE];
     // uint32_t getPayloadLen(const uint8_t *data);
-    
+
     void increment_nonce_counter(uint8_t *nonce);
 
     // Measurement of lea encryption and decryption time
@@ -54,8 +54,8 @@ public:
     GCM();
     int init();
     int init(uint8_t *K_, size_t K_len_, uint8_t *A_, size_t A_len_, uint8_t *N_, size_t N_len_);
-    int encrypt(uint8_t *otaPktPtr, uint8_t *data, uint8_t dataLen);       // otaPktPtr -> data
-    int decrypt(uint8_t *otaPktPtr, const uint8_t *data, uint8_t dataLen); // data --> otaPktPtr
+    int encrypt(const uint8_t *plaintext, int plaintext_len, uint8_t *ciphertext); // plaintext to data
+    int decrypt(const uint8_t *ciphertext, uint8_t ciphertext_len, uint8_t *plaintext); // ciphertext ->  plaintext
     void reset();
     int counter() { return COUNTER_RX; };
 

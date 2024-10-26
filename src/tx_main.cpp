@@ -4,6 +4,8 @@
 
 #include "gcm.h"
 
+#define MAX_CIPHERTEXT_PACKET_SIZE 32
+
 GCM lea_gcm;
 
 // connected to radio transmitter
@@ -21,29 +23,26 @@ void encryptedPacketChannels(uint8_t* buf, uint8_t len);
 
 void sendMspData(uint8_t* payload, uint8_t payload_len) {
   static uint8_t counter = 0;
-  int ret = 0;
   Crc8 _crc = Crc8(0xd5);
 
-  uint8_t len = 19;
   uint8_t buf[CRSF_MAX_PACKET_SIZE];
-  uint8_t ciphertext[LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE];
+  uint8_t ciphertext[MAX_CIPHERTEXT_PACKET_SIZE];
 
-  ret = lea_gcm.encrypt(payload, ciphertext, LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // buf is ciphertext
-  if (ret < 0) {
+  int ciphertext_len = lea_gcm.encrypt(payload, payload_len, ciphertext);
+  if (ciphertext_len < 0) {
     DebugSerial.println("Encryption failed");
     return;
   }
 
   buf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
-  buf[1] = len + 2; // type + payload + crc
+  buf[1] = ciphertext_len + 4; // type + 'CRSF_ADDRESS_FLIGHT_CONTROLLER' + '0' +  ciphertext + crc
   buf[2] = CRSF_FRAMETYPE_MSP_WRITE;
   buf[3] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
   buf[4] = 0;
-  memcpy(&buf[5], ciphertext, LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); 
-  buf[len+3] = _crc.calc(&buf[2], len + 1);
+  memcpy(&buf[5], ciphertext, ciphertext_len);
+  buf[ciphertext_len+5] = _crc.calc(&buf[2], ciphertext_len + 3);
 
-  crsf_transmitter.write(buf, len + 4);
-  //  encryptedPacketChannels(buf, len);
+  crsf_transmitter.write(buf, ciphertext_len + 6);
 }
 
 void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
@@ -72,7 +71,8 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   Serial.flush();
 
   if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
-    sendMspData((uint8_t*)(hdr->data), LEA_ADD_PACKET_SIZE + OTA8_PACKET_SIZE); // send msp to flight controller from security module
+    // sendMspData((uint8_t*)(hdr->data), hdr->frame_size - 2); // send msp to flight controller from security module
+    sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
     unsigned long currentTime = millis();
     unsigned long timeDiff = currentTime - lastSendMspTime;
 
