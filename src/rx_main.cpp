@@ -33,6 +33,9 @@ void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
 void to_flight_controller(const uint8_t* buf, uint8_t len) {
   int plaintext_len = 0;
   uint8_t plaintext[MAX_PLAINTEXT_PACKET_SIZE];
+  uint8_t _fcBuf[CRSF_MAX_PACKET_SIZE];
+  int _channels[CRSF_NUM_CHANNELS];
+  Crc8 _crc = Crc8(0xd5);
 
   static int counter = 0;
   // flight_controller.write(buf, len);
@@ -42,21 +45,6 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
 
   if (hdr->device_addr == CRSF_ADDRESS_FLIGHT_CONTROLLER)
   {
-    // if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
-    //
-    //   counter++;
-    //   DebugSerial.print(counter);
-    //   DebugSerial.print(" MSP_WRITE: ");
-    //   DebugSerial.print(hdr->type, HEX);
-    //   DebugSerial.print(" ");
-    //   for (int i = 0; i < hdr->frame_size - 2; i++) {
-    //     DebugSerial.print(hdr->data[i], HEX);
-    //     DebugSerial.print(" ");
-    //   }
-    //   DebugSerial.println();
-    // }
-
-    // Decrypt
     if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
       // TODO: why data[2]? should be data[3]?
       plaintext_len = lea_gcm.decrypt(&hdr->data[2], hdr->frame_size - 4, plaintext);
@@ -82,38 +70,49 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       //   DebugSerial.print(" ");
       // }
       // DebugSerial.println();
-     crsf_channels_t *ch = (crsf_channels_t *)&plaintext;
-     int ch0 = ch->ch0;
-     int ch1 = ch->ch1;
-     int ch2 = ch->ch2;
-     int ch3 = ch->ch3;
-     int ch4 = ch->ch4;
-     int ch5 = ch->ch5;
-     int ch6 = ch->ch6;
-     int ch7 = ch->ch7;
+
+
+      // _fcBuf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+      // _fcBuf[1] = plaintext_len + 2; // type + payload + crc
+      // _fcBuf[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
+      // memcpy(&_fcBuf[3], plaintext, plaintext_len);
+      // _fcBuf[plaintext_len+3] = _crc.calc(&_fcBuf[2], plaintext_len + 1);
+      // TODO write rc channels to fc
+      // flight_controller.queuePacket(CRSF_ADDRESS_FLIGHT_CONTROLLER, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, plaintext, plaintext_len);
+
+      crsf_channels_t *ch = (crsf_channels_t *)&plaintext;
+      _channels[0] = ch->ch0;
+      _channels[1] = ch->ch1;
+      _channels[2] = ch->ch2;
+      _channels[3] = ch->ch3;
+      _channels[4] = ch->ch4;
+      _channels[5] = ch->ch5;
+      _channels[6] = ch->ch6;
+      _channels[7] = ch->ch7;
+
+      for (unsigned int i=0; i<CRSF_NUM_CHANNELS; ++i)
+        _channels[i] = map(_channels[i], CRSF_CHANNEL_VALUE_1000, CRSF_CHANNEL_VALUE_2000, 1000, 2000);
 
      DebugSerial.print("RX RC Channels: ");
-     DebugSerial.print(ch0);
+     DebugSerial.print(_channels[0]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch1);
+     DebugSerial.print(_channels[1]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch2);
+     DebugSerial.print(_channels[2]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch3);
+     DebugSerial.print(_channels[3]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch4);
+     DebugSerial.print(_channels[4]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch5);
+     DebugSerial.print(_channels[5]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch6);
+     DebugSerial.print(_channels[6]);
      DebugSerial.print(" ");
-     DebugSerial.print(ch7);
+     DebugSerial.print(_channels[7]);
      DebugSerial.print(" ");
      DebugSerial.println();
     }
   }
-
-
 }
 
 void setup() {
@@ -189,4 +188,3 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 }
-
