@@ -154,9 +154,26 @@ void CrsfSerial::processPacketIn(uint8_t len)
             break;
         }
     } // CRSF_ADDRESS_FLIGHT_CONTROLLER
-  
-    if (onForward)
+
+    if (hdr->device_addr == CRSF_ADDRESS_CRSF_TRANSMITTER)
+    {
+        switch (hdr->type)
+        {
+        case CRSF_FRAMETYPE_RC_CHANNELS_PACKED:
+            packetChannelsPacked(hdr);
+            break;
+        case CRSF_FRAMETYPE_LINK_STATISTICS:
+            packetLinkStatistics(hdr);
+            break;
+        }
+    } // CRSF_ADDRESS_CRSF_TRANSMITTER
+
+    if (onForward) {
       onForward((const uint8_t*)hdr, hdr->frame_size + 2);
+    }
+
+    // DebugSerial.print("hdr addr: ");
+    // DebugSerial.println(hdr->device_addr, HEX);
 }
 
 // Shift the bytes in the RxBuf down by cnt bytes
