@@ -6,6 +6,7 @@
 #define MAX_PLAINTEXT_PACKET_SIZE 32
 
 GCM lea_gcm;
+
 // connected to flight controller
 CrsfSerial flight_controller(Serial1, 420000);
 
@@ -33,7 +34,7 @@ void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
 void to_flight_controller(const uint8_t* buf, uint8_t len) {
   int plaintext_len = 0;
   uint8_t plaintext[MAX_PLAINTEXT_PACKET_SIZE];
-  uint8_t _fcBuf[CRSF_MAX_PACKET_SIZE];
+
   int _channels[CRSF_NUM_CHANNELS];
   Crc8 _crc = Crc8(0xd5);
 
@@ -56,12 +57,11 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       unsigned long currentTime = millis();
       unsigned long timeDiff = currentTime - lastRecvMspTime;
 
-      // 실행 주기 출력: TODO RX interval up to 7.5ms
+      // TODO RX interval up to 7.5ms
       DebugSerial.print("RX interval: ");
       DebugSerial.print(timeDiff);
       DebugSerial.println(" ms");
 
-      // 현재 시간을 마지막 실행 시간으로 저장
       lastRecvMspTime = currentTime;
 
       // DebugSerial.print("Decrypted: ");
@@ -71,14 +71,18 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       // }
       // DebugSerial.println();
 
-
-      // _fcBuf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
-      // _fcBuf[1] = plaintext_len + 2; // type + payload + crc
-      // _fcBuf[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
-      // memcpy(&_fcBuf[3], plaintext, plaintext_len);
-      // _fcBuf[plaintext_len+3] = _crc.calc(&_fcBuf[2], plaintext_len + 1);
+      uint8_t _fcBuf[CRSF_MAX_PACKET_SIZE];
+      memset(_fcBuf, 0, CRSF_MAX_PACKET_SIZE);
+      _fcBuf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+      _fcBuf[1] = 22 + 2; // type + payload: 22 Bytes(RC Channels) + crc
+      _fcBuf[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
+      memcpy(&_fcBuf[3], plaintext, plaintext_len);
+      _fcBuf[22+3] = _crc.calc(&_fcBuf[2], 22 + 1);
       // TODO write rc channels to fc
-      // flight_controller.queuePacket(CRSF_ADDRESS_FLIGHT_CONTROLLER, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, plaintext, plaintext_len);
+      flight_controller.write(_fcBuf, 22 + 4);
+      Serial1.flush();
+
+      //      flight_controller.queuePacket(CRSF_ADDRESS_FLIGHT_CONTROLLER, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, plaintext, plaintext_len);
 
       crsf_channels_t *ch = (crsf_channels_t *)&plaintext;
       _channels[0] = ch->ch0;
