@@ -1,7 +1,7 @@
 set pagination off
 
 file .pio/build/TX/firmware.elf
-target extended-remote :3333
+target extended-remote :3335
 
 set mem inaccessible-by-default off
 load .pio/build/TX/firmware.elf
