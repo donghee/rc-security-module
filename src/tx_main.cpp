@@ -66,13 +66,16 @@ void packetChannels() {
 
 
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
+  static uint8_t counter = 0;
   const crsf_header_t *hdr = (crsf_header_t *)buf;
-  crsf_transmitter.write(buf, len);
-  Serial.flush();
-
+ 
   if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
     // sendMspData((uint8_t*)(hdr->data), hdr->frame_size - 2); // send msp to flight controller from security module
     sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
+    if (counter % 32 == 0) {
+      crsf_transmitter.write(buf, len);
+      Serial.flush();
+    }
     unsigned long currentTime = millis();
     unsigned long timeDiff = currentTime - lastSendMspTime;
 
@@ -83,9 +86,13 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
 
     // 현재 시간을 마지막 실행 시간으로 저장
     lastSendMspTime = currentTime;
+  } else {
+    crsf_transmitter.write(buf, len);
+    Serial.flush();
   }
   // DebugSerial.print("Radio Transmitter->ELRS TX: ");
   // DebugSerial.println("TX RC Channels: 992 992 173 992 173 173 173 173");
+  counter = (counter + 1) % 256;
 }
 
 void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
