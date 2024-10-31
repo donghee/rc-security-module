@@ -45,6 +45,80 @@ void sendMspData(uint8_t* payload, uint8_t payload_len) {
   crsf_transmitter.write(buf, ciphertext_len + 6);
 }
 
+void sendMspData2(uint8_t* payload, uint8_t payload_len) {
+  static uint8_t counter = 0;
+  Crc8 _crc = Crc8(0xd5);
+
+  uint8_t buf[CRSF_MAX_PACKET_SIZE];
+
+  buf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+  buf[1] = payload_len + 4; // type + 'CRSF_ADDRESS_FLIGHT_CONTROLLER' + '0' +  ciphertext + crc
+  buf[2] = CRSF_FRAMETYPE_MSP_WRITE;
+  buf[3] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+  buf[4] = 0;
+  memcpy(&buf[5], payload, payload_len);
+  buf[payload_len+5] = _crc.calc(&buf[2], payload_len + 3);
+
+  crsf_transmitter.write(buf, payload_len + 6);
+}
+
+enum HandshakeState {
+    WAITING_HELLO,
+    SENT_PUBKEY,
+    WAITING_DATA,
+    COMPLETED
+};
+
+static HandshakeState handshakeState = WAITING_HELLO;
+static unsigned long lastHandshakeTime = 0;
+const unsigned long HANDSHAKE_TIMEOUT = 6000; // 6초 타임아웃
+
+// Message for handshake
+const uint8_t MSP_HELLO = 0x01;
+const uint8_t MSP_PUBKEY = 0x02;
+const uint8_t MSP_DATA = 0x03;
+const uint8_t MSP_BYE = 0x04;
+
+// TX handshake
+void handleTxHandshake(uint8_t* data, uint8_t len) {
+  if (len < 2) return;
+
+  uint8_t destAddr = data[0];
+  uint8_t srcAddr = data[1];
+  uint8_t msgType = data[2];
+
+  switch (handshakeState) {
+  case WAITING_HELLO:
+    if (msgType == MSP_HELLO) {
+      // Hello 받으면 pubkey 전송
+      uint8_t pubkey[] = {MSP_PUBKEY, 0x01, 0x02, 0x03, 0x04}; // 예시 pubkey
+      sendMspData2(pubkey, sizeof(pubkey));
+      handshakeState = SENT_PUBKEY;
+      lastHandshakeTime = millis();
+    }
+    break;
+
+  case SENT_PUBKEY:
+    if (msgType == MSP_DATA) {
+      // 데이터 복호화 시도
+      bool decryption_success = true; // 실제 복호화 로직 필요
+
+      if (decryption_success) {
+        // 성공하면 BYE 메시지 전송
+        uint8_t end_msg[] = {MSP_BYE};
+        sendMspData2(end_msg, sizeof(end_msg));
+        handshakeState = COMPLETED;
+        DebugSerial.println("Handshake completed");
+      }
+    }
+    break;
+
+  default:
+    break;
+  }
+}
+
+
 void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
   DebugSerial.print("Encrypted RC Channels: ");
   for (int i = 0; i < len + 4; i++) {
@@ -55,13 +129,13 @@ void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
 }
 
 void packetChannels() {
-  DebugSerial.print("TX RC Channels: ");
-  // for (int i = 0; i < 16; i++) {
-  for (int i = 0; i < 8; i++) {
-    DebugSerial.print(radio_transmitter.getChannel(i + 1));
-    DebugSerial.print(" ");
-  }
-  DebugSerial.println();
+  // DebugSerial.print("TX RC Channels: ");
+  // // for (int i = 0; i < 16; i++) {
+  // for (int i = 0; i < 8; i++) {
+  //   DebugSerial.print(radio_transmitter.getChannel(i + 1));
+  //   DebugSerial.print(" ");
+  // }
+  //  DebugSerial.println();
 }
 
 
@@ -70,19 +144,22 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   const crsf_header_t *hdr = (crsf_header_t *)buf;
  
   if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
+     if (handshakeState == COMPLETED) {
     // sendMspData((uint8_t*)(hdr->data), hdr->frame_size - 2); // send msp to flight controller from security module
-    sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
-    if (counter % 32 == 0) {
-      crsf_transmitter.write(buf, len);
-      Serial.flush();
+    // sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
+       sendMspData((uint8_t*)(hdr->data), 10); // 12ms
     }
+    // if (counter % 8 == 0) {
+     crsf_transmitter.write(buf, len);
+     Serial.flush();
+    // }
     unsigned long currentTime = millis();
     unsigned long timeDiff = currentTime - lastSendMspTime;
 
     // 실행 주기 출력
-    DebugSerial.print("TX interval: ");
-    DebugSerial.print(timeDiff);
-    DebugSerial.println(" ms");
+    // DebugSerial.print("TX interval: ");
+    // DebugSerial.print(timeDiff);
+    // DebugSerial.println(" ms");
 
     // 현재 시간을 마지막 실행 시간으로 저장
     lastSendMspTime = currentTime;
@@ -96,6 +173,36 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
 }
 
 void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
+  const crsf_header_t *hdr = (crsf_header_t *)buf;
+
+  if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
+    // __BKPT();
+    if (hdr->data[0] == 0xEA && hdr->data[1] == 0) {
+      handleTxHandshake((uint8_t*)(hdr->data), hdr->frame_size - 2);
+      DebugSerial.print("GOT MSP_WRITE ");
+      DebugSerial.print(len);
+      DebugSerial.print(" ");
+      DebugSerial.print(buf[len-2], HEX);
+      DebugSerial.print(" ");
+      DebugSerial.print(buf[len-1], HEX);
+      DebugSerial.print(" CRSF: ");
+      DebugSerial.print(hdr->device_addr, HEX);
+      DebugSerial.print(" ");
+      DebugSerial.print(hdr->frame_size);
+      DebugSerial.print(" ");
+      DebugSerial.print(hdr->type, HEX);
+      DebugSerial.print(" ");
+      DebugSerial.print(hdr->data[0], HEX); // dest
+      DebugSerial.print(" ");
+      DebugSerial.print(hdr->data[1], HEX); // src
+      DebugSerial.print(" ");
+      DebugSerial.print(hdr->data[2], HEX); // MSP_*
+      DebugSerial.print(" ");
+      DebugSerial.println(hdr->data[3], HEX);
+      return;
+    }
+  }
+
   radio_transmitter.write(buf, len);
   Serial1.flush();
   // DebugSerial.print("ELRS TX->Radio Transmitter: ");
@@ -130,6 +237,14 @@ void setup() {
 void loop() {
   radio_transmitter.loop();
   crsf_transmitter.loop();
+
+  // handshake 타임아웃 처리
+  if (handshakeState != WAITING_HELLO && handshakeState != COMPLETED) {
+    if (millis() - lastHandshakeTime > HANDSHAKE_TIMEOUT) {
+      handshakeState = WAITING_HELLO;
+      DebugSerial.println("Handshake timeout");
+    }
+  }
 }
 
 void SystemClock_Config(void)
@@ -174,4 +289,3 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 }
-

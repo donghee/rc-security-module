@@ -17,6 +17,77 @@ HardwareSerial Serial1(USART1);
 HardwareSerial DebugSerial(UART5);
 static unsigned long lastRecvMspTime = 0;
 
+// Handshake states and messages
+enum HandshakeState {
+    INIT,
+    SENT_HELLO,
+    WAITING_PUBKEY,
+    SENT_DATA,
+    COMPLETED
+};
+
+static HandshakeState handshakeState = INIT;
+static unsigned long lastHandshakeTime = 0;
+const unsigned long HANDSHAKE_TIMEOUT = 6000; // 6초 타임아웃
+
+// Message for handshake
+const uint8_t MSP_HELLO = 0x01;
+const uint8_t MSP_PUBKEY = 0x02;
+const uint8_t MSP_DATA = 0x03;
+const uint8_t MSP_BYE = 0x04;
+
+void sendMspData2(uint8_t* payload, uint8_t payload_len) {
+  static uint8_t counter = 0;
+  Crc8 _crc = Crc8(0xd5);
+
+  uint8_t buf[CRSF_MAX_PACKET_SIZE];
+
+  buf[0] = CRSF_ADDRESS_RADIO_TRANSMITTER;
+  buf[1] = payload_len + 4; // type + 'CRSF_ADDRESS_RADIO_TRANSMITTER' + '0' +  ciphertext + crc
+  buf[2] = CRSF_FRAMETYPE_MSP_WRITE;
+  buf[3] = CRSF_ADDRESS_RADIO_TRANSMITTER;
+  buf[4] = 0;
+  memcpy(&buf[5], payload, payload_len);
+  buf[payload_len+5] = _crc.calc(&buf[2], payload_len + 3);
+
+  crsf_receiver.write(buf, payload_len + 6);
+}
+
+void handleRxHandshake(uint8_t* data, uint8_t len) {
+  if (len < 3) return;
+  uint8_t destAddr = data[0];
+  uint8_t srcAddr = data[1];
+  uint8_t msgType = data[2];
+
+  switch (handshakeState) {
+  case SENT_HELLO:
+    handshakeState = WAITING_PUBKEY;
+    lastHandshakeTime = millis();
+
+  case WAITING_PUBKEY:
+    DebugSerial.println("Handshake() PUBKEY");
+    if (msgType == MSP_PUBKEY) {
+      // pubkey를 받으면, 암호화 하여 데이터(경량암호키)를 보냄
+      uint8_t ciphertext[] = {MSP_DATA, 0x01, 0x02, 0x03, 0x04};
+      sendMspData2(ciphertext, sizeof(ciphertext));
+      handshakeState = SENT_DATA;
+      lastHandshakeTime = millis();
+    }
+    break;
+
+  case SENT_DATA:
+    DebugSerial.println("Handshake() SENT_DATA");
+    if (msgType == MSP_BYE) {
+      handshakeState = COMPLETED;
+    }
+    break;
+
+  default:
+    break;
+  }
+}
+
+
 void packetChannels() {
   DebugSerial.print("RX RC Channels: ");
   for (int i = 0; i < 16; i++) {
@@ -47,6 +118,12 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
   if (hdr->device_addr == CRSF_ADDRESS_FLIGHT_CONTROLLER)
   {
     if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
+      if (handshakeState != INIT && handshakeState != COMPLETED) {
+        DebugSerial.println("Handshake()");
+        handleRxHandshake((uint8_t*)(hdr->data), hdr->frame_size - 2);
+        return;
+      }
+
       // TODO: why data[2]? should be data[3]?
       plaintext_len = lea_gcm.decrypt(&hdr->data[2], hdr->frame_size - 4, plaintext);
       if (plaintext_len < 0) {
@@ -143,11 +220,33 @@ void setup() {
   DebugSerial.begin(420000);
 
   lea_gcm.init();
+
+  // handshake
+  uint8_t hello_msg[] = {MSP_HELLO};
+  sendMspData2(hello_msg, sizeof(hello_msg));
+  handshakeState = SENT_HELLO;
+  lastHandshakeTime = millis();
+  // SKIP handshake
+  // handshakeState = INIT;
+  DebugSerial.println("Handshake - starting");
 }
 
 void loop() {
   //flight_controller.loop();
   crsf_receiver.loop();
+
+  // Handshake timeout 처리
+  if (handshakeState != INIT && handshakeState != COMPLETED) {
+    if (millis() - lastHandshakeTime > HANDSHAKE_TIMEOUT) {
+      handshakeState = INIT;
+      // Restart handshake
+      uint8_t hello_msg[] = {MSP_HELLO};
+      sendMspData2(hello_msg, sizeof(hello_msg));
+      handshakeState = SENT_HELLO;
+      lastHandshakeTime = millis();
+      DebugSerial.println("Handshake timeout - restarting");
+    }
+  }
 }
 
 void SystemClock_Config(void)
