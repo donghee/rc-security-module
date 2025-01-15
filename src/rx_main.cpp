@@ -19,22 +19,25 @@ static unsigned long lastRecvMspTime = 0;
 
 // Handshake states and messages
 enum HandshakeState {
-    INIT,
+    INIT = 0,
     SENT_HELLO,
-    WAITING_PUBKEY,
-    SENT_DATA,
+    WAITING_ACK,
+    SENT_PUBKEY,
+    WAITING_DATA,
+    SENT_BYE,
     COMPLETED
 };
 
 static HandshakeState handshakeState = INIT;
 static unsigned long lastHandshakeTime = 0;
-const unsigned long HANDSHAKE_TIMEOUT = 6000; // 6초 타임아웃
+const unsigned long HANDSHAKE_TIMEOUT = 8000; // 8초 타임아웃
 
 // Message for handshake
 const uint8_t MSP_HELLO = 0x01;
-const uint8_t MSP_PUBKEY = 0x02;
-const uint8_t MSP_DATA = 0x03;
-const uint8_t MSP_BYE = 0x04;
+const uint8_t MSP_ACK = 0x02;
+const uint8_t MSP_PUBKEY = 0x03;
+const uint8_t MSP_DATA = 0x04;
+const uint8_t MSP_BYE = 0x05;
 
 void sendMspData2(uint8_t* payload, uint8_t payload_len) {
   static uint8_t counter = 0;
@@ -59,29 +62,47 @@ void handleRxHandshake(uint8_t* data, uint8_t len) {
   uint8_t srcAddr = data[1];
   uint8_t msgType = data[2];
 
+  DebugSerial.print("RX msgType: ");
+  DebugSerial.println(msgType, HEX);
+
   switch (handshakeState) {
   case SENT_HELLO:
-    handshakeState = WAITING_PUBKEY;
+    handshakeState = WAITING_ACK;
     lastHandshakeTime = millis();
-
-  case WAITING_PUBKEY:
-    DebugSerial.println("Handshake() PUBKEY");
-    if (msgType == MSP_PUBKEY) {
-      // pubkey를 받으면, 암호화 하여 데이터(경량암호키)를 보냄
-      uint8_t ciphertext[] = {MSP_DATA, 0x01, 0x02, 0x03, 0x04};
-      sendMspData2(ciphertext, sizeof(ciphertext));
-      handshakeState = SENT_DATA;
+  case WAITING_ACK:
+    if (msgType == MSP_ACK) {
+      DebugSerial.println("--> Handshake() ACK");
+      // ACK 받으면 pubkey 전송
+      uint8_t pubkey[] = {MSP_PUBKEY, 0x01, 0x02, 0x03, 0x04};
+      sendMspData2(pubkey, sizeof(pubkey));
+      handshakeState = SENT_PUBKEY;
+      lastHandshakeTime = millis();
+      DebugSerial.println("Handshake() PUBKEY -->");
+      handshakeState = WAITING_DATA;
       lastHandshakeTime = millis();
     }
     break;
-
-  case SENT_DATA:
-    DebugSerial.println("Handshake() SENT_DATA");
-    if (msgType == MSP_BYE) {
-      handshakeState = COMPLETED;
+  case WAITING_DATA:
+    if (msgType == MSP_DATA) {
+      DebugSerial.println("--> Handshake() SENT_DATA");
+      // 데이터 복호화 시도
+      bool decryption_success = true; // 실제 복호화 로직 필요
+      if (decryption_success) {
+        // 성공하면 BYE BYE 메시지 전송
+        uint8_t bye_msg[] = {MSP_BYE};
+        sendMspData2(bye_msg, sizeof(bye_msg));
+        sendMspData2(bye_msg, sizeof(bye_msg));
+        sendMspData2(bye_msg, sizeof(bye_msg));
+        sendMspData2(bye_msg, sizeof(bye_msg));
+        handshakeState = SENT_BYE;
+        DebugSerial.println("Handshake() BYE -->");
+        handshakeState = COMPLETED;
+        lastHandshakeTime = millis();
+      }
     }
     break;
-
+  case COMPLETED:
+    DebugSerial.println("Handshake() COMPLETED");
   default:
     break;
   }
@@ -118,8 +139,9 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
   if (hdr->device_addr == CRSF_ADDRESS_FLIGHT_CONTROLLER)
   {
     if (hdr->type == CRSF_FRAMETYPE_MSP_WRITE) {
+      // Handshake
       if (handshakeState != INIT && handshakeState != COMPLETED) {
-        DebugSerial.println("Handshake()");
+        DebugSerial.println("Handshake() ...");
         handleRxHandshake((uint8_t*)(hdr->data), hdr->frame_size - 2);
         return;
       }
@@ -239,12 +261,13 @@ void loop() {
   if (handshakeState != INIT && handshakeState != COMPLETED) {
     if (millis() - lastHandshakeTime > HANDSHAKE_TIMEOUT) {
       handshakeState = INIT;
+      DebugSerial.println("Handshake timeout - restarting");
       // Restart handshake
       uint8_t hello_msg[] = {MSP_HELLO};
       sendMspData2(hello_msg, sizeof(hello_msg));
       handshakeState = SENT_HELLO;
       lastHandshakeTime = millis();
-      DebugSerial.println("Handshake timeout - restarting");
+      DebugSerial.println("Handshake() HELLO ->");
     }
   }
 }
