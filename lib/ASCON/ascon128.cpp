@@ -10,10 +10,10 @@ Ascon128::~Ascon128() {
 }
 
 int Ascon128::initialize(const uint8_t* key, uint32_t key_bit_length, 
-                         const uint8_t* associated_data, uint32_t associated_data_length, 
+                         const uint8_t* a, uint32_t a_byte_length, 
                          uint32_t tag_bit_length) {
   return ASCON128x_set_init_params(&ascon, key, key_bit_length, 
-                                   associated_data, associated_data_length, 
+                                   a, a_byte_length, 
                                    tag_bit_length);
 }
 
