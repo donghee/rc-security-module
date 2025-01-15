@@ -63,21 +63,24 @@ void sendMspData2(uint8_t* payload, uint8_t payload_len) {
 }
 
 enum HandshakeState {
-    WAITING_HELLO,
-    SENT_PUBKEY,
-    WAITING_DATA,
+    WAITING_HELLO = 0,
+    SENT_ACK,
+    WAITING_PUBKEY,
+    SENT_DATA,
+    WAITING_BYE,
     COMPLETED
 };
 
 static HandshakeState handshakeState = WAITING_HELLO;
 static unsigned long lastHandshakeTime = 0;
-const unsigned long HANDSHAKE_TIMEOUT = 6000; // 6초 타임아웃
+const unsigned long HANDSHAKE_TIMEOUT = 8000; // 6초 타임아웃
 
 // Message for handshake
 const uint8_t MSP_HELLO = 0x01;
-const uint8_t MSP_PUBKEY = 0x02;
-const uint8_t MSP_DATA = 0x03;
-const uint8_t MSP_BYE = 0x04;
+const uint8_t MSP_ACK = 0x02;
+const uint8_t MSP_PUBKEY = 0x03;
+const uint8_t MSP_DATA = 0x04;
+const uint8_t MSP_BYE = 0x05;
 
 // TX handshake
 void handleTxHandshake(uint8_t* data, uint8_t len) {
@@ -87,32 +90,44 @@ void handleTxHandshake(uint8_t* data, uint8_t len) {
   uint8_t srcAddr = data[1];
   uint8_t msgType = data[2];
 
+  DebugSerial.print("TX msgType: ");
+  DebugSerial.println(msgType, HEX);
+
   switch (handshakeState) {
   case WAITING_HELLO:
     if (msgType == MSP_HELLO) {
-      // Hello 받으면 pubkey 전송
-      uint8_t pubkey[] = {MSP_PUBKEY, 0x01, 0x02, 0x03, 0x04}; // 예시 pubkey
-      sendMspData2(pubkey, sizeof(pubkey));
-      handshakeState = SENT_PUBKEY;
+      DebugSerial.println("--> Handshake() HELLO");
+      // Hello 받으면 ACK 전송
+      DebugSerial.println("Handshake() ACK -->");
+      uint8_t ack[] = {MSP_ACK};
+      sendMspData2(ack, sizeof(ack));
+      handshakeState = SENT_ACK;
+      lastHandshakeTime = millis();
+      handshakeState = WAITING_PUBKEY;
       lastHandshakeTime = millis();
     }
     break;
-
-  case SENT_PUBKEY:
-    if (msgType == MSP_DATA) {
-      // 데이터 복호화 시도
-      bool decryption_success = true; // 실제 복호화 로직 필요
-
-      if (decryption_success) {
-        // 성공하면 BYE 메시지 전송
-        uint8_t end_msg[] = {MSP_BYE};
-        sendMspData2(end_msg, sizeof(end_msg));
-        handshakeState = COMPLETED;
-        DebugSerial.println("Handshake completed");
-      }
+  case WAITING_PUBKEY:
+    if (msgType == MSP_PUBKEY) {
+      DebugSerial.println("--> Handshake() PUBKEY");
+      // pubkey를 받으면, 암호화 하여 데이터(경량암호키)를 보냄
+      uint8_t ciphertext[] = {MSP_DATA, 0x01, 0x02, 0x03, 0x04};
+      sendMspData2(ciphertext, sizeof(ciphertext));
+      handshakeState = SENT_DATA;
+      lastHandshakeTime = millis();
+      DebugSerial.println("Handshake() SENT_DATA -->");
+      handshakeState = WAITING_BYE;
+      lastHandshakeTime = millis();
     }
     break;
-
+  case WAITING_BYE:
+    if (msgType == MSP_BYE) {
+      DebugSerial.println("--> Handshake() BYE");
+      handshakeState = COMPLETED;
+      lastHandshakeTime = millis();
+      DebugSerial.println("Handshake() COMPLETED");
+    }
+    break;
   default:
     break;
   }
@@ -179,26 +194,26 @@ void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
     // __BKPT();
     if (hdr->data[0] == 0xEA && hdr->data[1] == 0) {
       handleTxHandshake((uint8_t*)(hdr->data), hdr->frame_size - 2);
-      DebugSerial.print("GOT MSP_WRITE ");
-      DebugSerial.print(len);
-      DebugSerial.print(" ");
-      DebugSerial.print(buf[len-2], HEX);
-      DebugSerial.print(" ");
-      DebugSerial.print(buf[len-1], HEX);
-      DebugSerial.print(" CRSF: ");
-      DebugSerial.print(hdr->device_addr, HEX);
-      DebugSerial.print(" ");
-      DebugSerial.print(hdr->frame_size);
-      DebugSerial.print(" ");
-      DebugSerial.print(hdr->type, HEX);
-      DebugSerial.print(" ");
-      DebugSerial.print(hdr->data[0], HEX); // dest
-      DebugSerial.print(" ");
-      DebugSerial.print(hdr->data[1], HEX); // src
-      DebugSerial.print(" ");
-      DebugSerial.print(hdr->data[2], HEX); // MSP_*
-      DebugSerial.print(" ");
-      DebugSerial.println(hdr->data[3], HEX);
+      // DebugSerial.print("GOT MSP_WRITE ");
+      // DebugSerial.print(len);
+      // DebugSerial.print(" ");
+      // DebugSerial.print(buf[len-2], HEX);
+      // DebugSerial.print(" ");
+      // DebugSerial.print(buf[len-1], HEX);
+      // DebugSerial.print(" CRSF: ");
+      // DebugSerial.print(hdr->device_addr, HEX);
+      // DebugSerial.print(" ");
+      // DebugSerial.print(hdr->frame_size);
+      // DebugSerial.print(" ");
+      // DebugSerial.print(hdr->type, HEX);
+      // DebugSerial.print(" ");
+      // DebugSerial.print(hdr->data[0], HEX); // dest
+      // DebugSerial.print(" ");
+      // DebugSerial.print(hdr->data[1], HEX); // src
+      // DebugSerial.print(" ");
+      // DebugSerial.print(hdr->data[2], HEX); // MSP_*
+      // DebugSerial.print(" ");
+      // DebugSerial.println(hdr->data[3], HEX);
       return;
     }
   }
