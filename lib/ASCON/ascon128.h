@@ -43,7 +43,7 @@ public:
   }
 
   int initialize(const uint8_t* key, uint32_t key_bit_length, 
-                 const uint8_t* associated_data, uint32_t associated_data_length, 
+                 const uint8_t* a, uint32_t a_byte_length, 
                  uint32_t tag_bit_length);
 
   int encrypt(const uint8_t* plaintext, uint32_t plaintext_length, 
