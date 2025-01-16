@@ -1,0 +1,17 @@
+name: rc-security-module
+on_project_start: ./build.sh TX; ./build.sh RX
+windows:
+  - tx:
+      layout: main-vertical
+      panes:
+        - vim src/tx_main.cpp
+        - pyocd gdbserver --persist -t stm32f479iihx -u 50FF6A064889495145330387 -p 3335 -T 4446 # TX STLink-V2 Clone Yellow
+        - ./build.sh TX && ./debug.sh TX
+        - tio /dev/ttyUSB0 -b 420000
+  - rx:
+      layout: main-vertical
+      panes:
+        - vim src/rx_main.cpp
+        - pyocd gdbserver --persist -t stm32f479iihx -u 16004A002933353739303541 -p 3336 -T 4447 # RX STLink-V2 Clone Blue
+        - ./build.sh RX && ./debug.sh RX
+        - tio /dev/ttyUSB1 -b 420000
