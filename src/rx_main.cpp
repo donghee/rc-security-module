@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CrsfSerial.h"
+#include "ota.h"
 
 #include "gcm.h"
 
@@ -39,7 +40,7 @@ const uint8_t MSP_PUBKEY = 0x03;
 const uint8_t MSP_DATA = 0x04;
 const uint8_t MSP_BYE = 0x05;
 
-void sendMspData2(uint8_t* payload, uint8_t payload_len) {
+void sendMspData_handshake(uint8_t* payload, uint8_t payload_len) {
   static uint8_t counter = 0;
   Crc8 _crc = Crc8(0xd5);
 
@@ -74,7 +75,7 @@ void handleRxHandshake(uint8_t* data, uint8_t len) {
       DebugSerial.println("--> Handshake() ACK");
       // ACK 받으면 pubkey 전송
       uint8_t pubkey[] = {MSP_PUBKEY, 0x01, 0x02, 0x03, 0x04};
-      sendMspData2(pubkey, sizeof(pubkey));
+      sendMspData_handshake(pubkey, sizeof(pubkey));
       handshakeState = SENT_PUBKEY;
       lastHandshakeTime = millis();
       DebugSerial.println("Handshake() PUBKEY -->");
@@ -90,10 +91,10 @@ void handleRxHandshake(uint8_t* data, uint8_t len) {
       if (decryption_success) {
         // 성공하면 BYE BYE 메시지 전송
         uint8_t bye_msg[] = {MSP_BYE};
-        sendMspData2(bye_msg, sizeof(bye_msg));
-        sendMspData2(bye_msg, sizeof(bye_msg));
-        sendMspData2(bye_msg, sizeof(bye_msg));
-        sendMspData2(bye_msg, sizeof(bye_msg));
+        sendMspData_handshake(bye_msg, sizeof(bye_msg));
+        sendMspData_handshake(bye_msg, sizeof(bye_msg));
+        sendMspData_handshake(bye_msg, sizeof(bye_msg));
+        sendMspData_handshake(bye_msg, sizeof(bye_msg));
         handshakeState = SENT_BYE;
         DebugSerial.println("Handshake() BYE -->");
         handshakeState = COMPLETED;
@@ -108,11 +109,49 @@ void handleRxHandshake(uint8_t* data, uint8_t len) {
   }
 }
 
-
 void packetChannels() {
   DebugSerial.print("RX RC Channels: ");
   for (int i = 0; i < 16; i++) {
     DebugSerial.print(crsf_receiver.getChannel(i + 1));
+    DebugSerial.print(" ");
+  }
+  DebugSerial.println();
+}
+
+void printChannelData(uint32_t* channelData) {
+    for (int i = 0; i < 8; i++) {
+        DebugSerial.print(channelData[i]);
+        DebugSerial.print(" ");
+    }
+    DebugSerial.println();
+}
+
+void printCrsfChannels(crsf_channels_t* ch) {
+  uint32_t _channels[CRSF_NUM_CHANNELS];
+
+  // Copy channel values
+  _channels[0] = ch->ch0;
+  _channels[1] = ch->ch1;
+  _channels[2] = ch->ch2;
+  _channels[3] = ch->ch3;
+  _channels[4] = ch->ch4;
+  _channels[5] = ch->ch5;
+  _channels[6] = ch->ch6;
+  _channels[7] = ch->ch7;
+
+  // Map channel values
+  for (unsigned int i = 0; i < CRSF_NUM_CHANNELS; ++i) {
+    _channels[i] = map(_channels[i], 
+                       CRSF_CHANNEL_VALUE_1000, 
+                       CRSF_CHANNEL_VALUE_2000, 
+                       1000, 
+                       2000);
+  }
+
+  // Print channel values
+  DebugSerial.print("RX RC Channels: ");
+  for (int i = 0; i < 8; i++) {
+    DebugSerial.print(_channels[i]);
     DebugSerial.print(" ");
   }
   DebugSerial.println();
@@ -126,8 +165,6 @@ void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
 void to_flight_controller(const uint8_t* buf, uint8_t len) {
   int plaintext_len = 0;
   uint8_t plaintext[MAX_PLAINTEXT_PACKET_SIZE];
-
-  int _channels[CRSF_NUM_CHANNELS];
   Crc8 _crc = Crc8(0xd5);
 
   static int counter = 0;
@@ -170,6 +207,16 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       // }
       // DebugSerial.println();
 
+      RC_s rc;
+      uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
+      memcpy(&rc, plaintext, sizeof(rc));
+
+      UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
+      UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
+
+      DebugSerial.print("10 Bytes RX RC Channels: "); 
+      printChannelData(UnpackChannelData);
+
       uint8_t _fcBuf[CRSF_MAX_PACKET_SIZE];
       memset(_fcBuf, 0, CRSF_MAX_PACKET_SIZE);
       _fcBuf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
@@ -183,37 +230,7 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
 
       //      flight_controller.queuePacket(CRSF_ADDRESS_FLIGHT_CONTROLLER, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, plaintext, plaintext_len);
 
-      crsf_channels_t *ch = (crsf_channels_t *)&plaintext;
-      _channels[0] = ch->ch0;
-      _channels[1] = ch->ch1;
-      _channels[2] = ch->ch2;
-      _channels[3] = ch->ch3;
-      _channels[4] = ch->ch4;
-      _channels[5] = ch->ch5;
-      _channels[6] = ch->ch6;
-      _channels[7] = ch->ch7;
-
-      for (unsigned int i=0; i<CRSF_NUM_CHANNELS; ++i)
-        _channels[i] = map(_channels[i], CRSF_CHANNEL_VALUE_1000, CRSF_CHANNEL_VALUE_2000, 1000, 2000);
-
-     DebugSerial.print("RX RC Channels: ");
-     DebugSerial.print(_channels[0]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[1]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[2]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[3]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[4]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[5]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[6]);
-     DebugSerial.print(" ");
-     DebugSerial.print(_channels[7]);
-     DebugSerial.print(" ");
-     DebugSerial.println();
+      printCrsfChannels((crsf_channels_t *)&plaintext);
     }
   }
 }
@@ -244,18 +261,21 @@ void setup() {
   lea_gcm.init();
 
   // handshake
-  uint8_t hello_msg[] = {MSP_HELLO};
-  sendMspData2(hello_msg, sizeof(hello_msg));
-  handshakeState = SENT_HELLO;
-  lastHandshakeTime = millis();
+  // uint8_t hello_msg[] = {MSP_HELLO};
+  // sendMspData_handshake(hello_msg, sizeof(hello_msg));
+  // handshakeState = SENT_HELLO;
+  // lastHandshakeTime = millis();
   // SKIP handshake
   // handshakeState = INIT;
-  DebugSerial.println("Handshake - starting");
+  // DebugSerial.println("Handshake - starting");
+  handshakeState = COMPLETED;
 }
 
 void loop() {
   //flight_controller.loop();
   crsf_receiver.loop();
+
+  return; // SKIP handshake
 
   // Handshake timeout 처리
   if (handshakeState != INIT && handshakeState != COMPLETED) {
@@ -264,7 +284,7 @@ void loop() {
       DebugSerial.println("Handshake timeout - restarting");
       // Restart handshake
       uint8_t hello_msg[] = {MSP_HELLO};
-      sendMspData2(hello_msg, sizeof(hello_msg));
+      sendMspData_handshake(hello_msg, sizeof(hello_msg));
       handshakeState = SENT_HELLO;
       lastHandshakeTime = millis();
       DebugSerial.println("Handshake() HELLO ->");

@@ -177,3 +177,82 @@ static inline uint32_t be32toh(uint32_t val)
 #endif
 }
 #endif
+
+static uint16_t fmap(uint16_t x, uint16_t in_min, uint16_t in_max, uint16_t out_min, uint16_t out_max)
+{
+    return ((x - in_min) * (out_max - out_min) * 2 / (in_max - in_min) + out_min * 2 + 1) / 2;
+}
+
+// Scale a -100& to +100% crossfire value to 988-2012 (Taranis channel uS)
+static inline uint16_t CRSF_to_US(uint16_t val)
+{
+    return fmap(val, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX, 988, 2012);
+}
+
+// Scale down a 10-bit value to a -100& to +100% crossfire value
+static inline uint16_t UINT10_to_CRSF(uint16_t val)
+{
+    return fmap(val, 0, 1023, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX);
+}
+
+// Scale up a -100& to +100% crossfire value to 10-bit
+static inline uint16_t CRSF_to_UINT10(uint16_t val)
+{
+    return fmap(val, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX, 0, 1023);
+}
+
+// Convert 0-max to the CRSF values for 1000-2000
+static inline uint16_t N_to_CRSF(uint16_t val, uint16_t max)
+{
+    return val * (CRSF_CHANNEL_VALUE_2000-CRSF_CHANNEL_VALUE_1000) / max + CRSF_CHANNEL_VALUE_1000;
+}
+
+// Convert CRSF to 0-(cnt-1), constrained between 1000us and 2000us
+static inline uint16_t CRSF_to_N(uint16_t val, uint16_t cnt)
+{
+    // The span is increased by one to prevent the max val from returning cnt
+    if (val <= CRSF_CHANNEL_VALUE_1000)
+        return 0;
+    if (val >= CRSF_CHANNEL_VALUE_2000)
+        return cnt - 1;
+    return (val - CRSF_CHANNEL_VALUE_1000) * cnt / (CRSF_CHANNEL_VALUE_2000 - CRSF_CHANNEL_VALUE_1000 + 1);
+}
+
+// 3b switches use 0-5 to represent 6 positions switches and "7" to represent middle
+// The calculation is a bit non-linear all the way to the endpoints due to where
+// Ardupilot defines its modes
+static inline uint16_t SWITCH3b_to_CRSF(uint16_t val)
+{
+    switch (val)
+    {
+    case 0: return CRSF_CHANNEL_VALUE_1000;
+    case 5: return CRSF_CHANNEL_VALUE_2000;
+    case 6: // fallthrough
+    case 7: return CRSF_CHANNEL_VALUE_MID;
+    default: // (val - 1) * 240 + 630; aka 150us spacing, starting at 1275
+        return val * 240 + 391;
+    }
+}
+
+// Returns 1 if val is greater than CRSF_CHANNEL_VALUE_MID
+static inline uint8_t CRSF_to_BIT(uint16_t val)
+{
+    return (val > CRSF_CHANNEL_VALUE_MID) ? 1 : 0;
+}
+
+// Convert a bit into either the CRSF value for 1000 or 2000
+static inline uint16_t BIT_to_CRSF(uint8_t val)
+{
+    return (val) ? CRSF_CHANNEL_VALUE_2000 : CRSF_CHANNEL_VALUE_1000;
+}
+
+static inline uint8_t CalcCRCMsp(uint8_t *data, int length)
+{
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < length; ++i) {
+        crc = crc ^ *data++;
+    }
+    return crc;
+}
+
+
