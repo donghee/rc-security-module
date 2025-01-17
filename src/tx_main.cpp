@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "crc8.h"
 #include "CrsfSerial.h"
+#include "ota.h"
 
 #include "gcm.h"
 
@@ -45,7 +46,7 @@ void sendMspData(uint8_t* payload, uint8_t payload_len) {
   crsf_transmitter.write(buf, ciphertext_len + 6);
 }
 
-void sendMspData2(uint8_t* payload, uint8_t payload_len) {
+void sendMspData_handshake(uint8_t* payload, uint8_t payload_len) {
   static uint8_t counter = 0;
   Crc8 _crc = Crc8(0xd5);
 
@@ -100,7 +101,7 @@ void handleTxHandshake(uint8_t* data, uint8_t len) {
       // Hello 받으면 ACK 전송
       DebugSerial.println("Handshake() ACK -->");
       uint8_t ack[] = {MSP_ACK};
-      sendMspData2(ack, sizeof(ack));
+      sendMspData_handshake(ack, sizeof(ack));
       handshakeState = SENT_ACK;
       lastHandshakeTime = millis();
       handshakeState = WAITING_PUBKEY;
@@ -112,7 +113,7 @@ void handleTxHandshake(uint8_t* data, uint8_t len) {
       DebugSerial.println("--> Handshake() PUBKEY");
       // pubkey를 받으면, 암호화 하여 데이터(경량암호키)를 보냄
       uint8_t ciphertext[] = {MSP_DATA, 0x01, 0x02, 0x03, 0x04};
-      sendMspData2(ciphertext, sizeof(ciphertext));
+      sendMspData_handshake(ciphertext, sizeof(ciphertext));
       handshakeState = SENT_DATA;
       lastHandshakeTime = millis();
       DebugSerial.println("Handshake() SENT_DATA -->");
@@ -143,6 +144,33 @@ void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
   DebugSerial.println();
 }
 
+void generateChannelData(const crsf_channels_t* ch, uint32_t* ChannelData) {
+    ChannelData[0] = ch->ch0;
+    ChannelData[1] = ch->ch1;
+    ChannelData[2] = ch->ch2;
+    ChannelData[3] = ch->ch3;
+    ChannelData[4] = ch->ch4;
+    ChannelData[5] = ch->ch5;
+    ChannelData[6] = ch->ch6;
+    ChannelData[7] = ch->ch7;
+    ChannelData[8] = ch->ch8;
+    ChannelData[9] = ch->ch9;
+    ChannelData[10] = ch->ch10;
+    ChannelData[11] = ch->ch11;
+    ChannelData[12] = ch->ch12;
+    ChannelData[13] = ch->ch13;
+    ChannelData[14] = ch->ch14;
+    ChannelData[15] = ch->ch15;
+}
+
+void printChannelData(uint32_t* channelData) {
+    for (int i = 0; i < 8; i++) {
+        DebugSerial.print(channelData[i]);
+        DebugSerial.print(" ");
+    }
+    DebugSerial.println();
+}
+
 void packetChannels() {
   // DebugSerial.print("TX RC Channels: ");
   // // for (int i = 0; i < 16; i++) {
@@ -157,12 +185,28 @@ void packetChannels() {
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   static uint8_t counter = 0;
   const crsf_header_t *hdr = (crsf_header_t *)buf;
- 
+
+  RC_s rc;
+  uint32_t ChannelData[CRSF_NUM_CHANNELS] = {0};
+  uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
+
   if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
      if (handshakeState == COMPLETED) {
     // sendMspData((uint8_t*)(hdr->data), hdr->frame_size - 2); // send msp to flight controller from security module
     // sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
-       sendMspData((uint8_t*)(hdr->data), 10); // 12ms
+      // sendMspData((uint8_t*)(hdr->data), 10); // 12ms
+      
+      generateChannelData((crsf_channels_t *)&hdr->data, ChannelData);
+      PackUInt11ToChannels4x10(&ChannelData[0], &rc.chLow);
+      PackUInt11ToChannels4x10(&ChannelData[4], &rc.chHigh);
+      // for unpacking test
+      UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
+      UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
+
+      DebugSerial.print("10 Bytes TX RC Channels: "); // TODO: decrease to 7 bytes
+      printChannelData(UnpackChannelData);
+
+      sendMspData((uint8_t*)&rc, 10);
     }
     // if (counter % 8 == 0) {
      crsf_transmitter.write(buf, len);
@@ -247,11 +291,16 @@ void setup() {
   DebugSerial.begin(420000);
 
   lea_gcm.init();
+
+  // SKIP handshake
+  handshakeState = COMPLETED;
 }
 
 void loop() {
   radio_transmitter.loop();
   crsf_transmitter.loop();
+
+  return; // SKIP handshake
 
   // handshake 타임아웃 처리
   if (handshakeState != WAITING_HELLO && handshakeState != COMPLETED) {

@@ -7,4 +7,4 @@ set mem inaccessible-by-default off
 load .pio/build/RX/firmware.elf
 
 c
-f CRSF::readPacket()
+#f CRSF::readPacket()
