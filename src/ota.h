@@ -11,7 +11,7 @@ typedef struct {
 typedef struct {
   OTA_Channels_4x10 chLow;  // CH0-CH3
   OTA_Channels_4x10 chHigh; // AUX2-5 or AUX6-9
-} PACKED RC_s;
+} PACKED RC_Channels_t;
 
 void PackUInt11ToChannels4x10(uint32_t const * const src, OTA_Channels_4x10 * const destChannels4x10);
 void UnpackChannels4x10ToUInt11(OTA_Channels_4x10 const * const srcChannels4x10, uint32_t * const dest);

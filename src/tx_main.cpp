@@ -186,7 +186,7 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   static uint8_t counter = 0;
   const crsf_header_t *hdr = (crsf_header_t *)buf;
 
-  RC_s rc;
+  RC_Channels_t rc;
   uint32_t ChannelData[CRSF_NUM_CHANNELS] = {0};
   uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
 
@@ -262,8 +262,9 @@ void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
     }
   }
 
-  radio_transmitter.write(buf, len);
-  Serial1.flush();
+  // TODO: Fix Occour Emergency Error from 2025.01.17
+  // radio_transmitter.write(buf, len);
+  // Serial1.flush();
   // DebugSerial.print("ELRS TX->Radio Transmitter: ");
 }
 
