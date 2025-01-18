@@ -126,6 +126,27 @@ void printChannelData(uint32_t* channelData) {
     DebugSerial.println();
 }
 
+crsf_channels_t generateCrsfChannels(uint32_t* channelData) {
+  crsf_channels_t ch;
+  ch.ch0 = channelData[0];
+  ch.ch1 = channelData[1];
+  ch.ch2 = channelData[2];
+  ch.ch3 = channelData[3];
+  ch.ch4 = channelData[4];
+  ch.ch5 = channelData[5];
+  ch.ch6 = channelData[6];
+  ch.ch7 = channelData[7];
+  ch.ch8 = channelData[8];
+  ch.ch9 = channelData[9];
+  ch.ch10 = channelData[10];
+  ch.ch11 = channelData[11];
+  ch.ch12 = channelData[12];
+  ch.ch13 = channelData[13];
+  ch.ch14 = channelData[14];
+  ch.ch15 = channelData[15];
+  return ch;
+}
+
 void printCrsfChannels(crsf_channels_t* ch) {
   uint32_t _channels[CRSF_NUM_CHANNELS];
 
@@ -149,12 +170,12 @@ void printCrsfChannels(crsf_channels_t* ch) {
   }
 
   // Print channel values
-  DebugSerial.print("RX RC Channels: ");
-  for (int i = 0; i < 8; i++) {
-    DebugSerial.print(_channels[i]);
-    DebugSerial.print(" ");
-  }
-  DebugSerial.println();
+  // DebugSerial.print("RX RC Channels: ");
+  // for (int i = 0; i < 8; i++) {
+  //   DebugSerial.print(_channels[i]);
+  //   DebugSerial.print(" ");
+  // }
+  // DebugSerial.println();
 }
 
 void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
@@ -207,7 +228,7 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       // }
       // DebugSerial.println();
 
-      RC_s rc;
+      RC_Channels_t rc;
       uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
       memcpy(&rc, plaintext, sizeof(rc));
 
@@ -217,20 +238,22 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       DebugSerial.print("10 Bytes RX RC Channels: "); 
       printChannelData(UnpackChannelData);
 
+      crsf_channels_t crsf_channels = generateCrsfChannels(UnpackChannelData);
+
       uint8_t _fcBuf[CRSF_MAX_PACKET_SIZE];
       memset(_fcBuf, 0, CRSF_MAX_PACKET_SIZE);
       _fcBuf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
       _fcBuf[1] = 22 + 2; // type + payload: 22 Bytes(RC Channels) + crc
       _fcBuf[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
-      memcpy(&_fcBuf[3], plaintext, plaintext_len);
+      // memcpy(&_fcBuf[3], plaintext, plaintext_len);
+      memcpy(&_fcBuf[3], &crsf_channels, sizeof(crsf_channels_t));
       _fcBuf[22+3] = _crc.calc(&_fcBuf[2], 22 + 1);
       // TODO write rc channels to fc
       flight_controller.write(_fcBuf, 22 + 4);
       Serial1.flush();
 
       //      flight_controller.queuePacket(CRSF_ADDRESS_FLIGHT_CONTROLLER, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, plaintext, plaintext_len);
-
-      printCrsfChannels((crsf_channels_t *)&plaintext);
+      // printCrsfChannels((crsf_channels_t *)&plaintext);
     }
   }
 }
