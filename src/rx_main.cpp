@@ -18,6 +18,7 @@ CrsfSerial crsf_receiver(Serial, 420000);
 HardwareSerial Serial1(USART1);
 HardwareSerial DebugSerial(UART5);
 static unsigned long lastRecvMspTime = 0;
+static unsigned long lastRecvRcTime = 0;
 
 // Handshake states and messages
 enum HandshakeState {
@@ -354,6 +355,38 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
 
       //      flight_controller.queuePacket(CRSF_ADDRESS_FLIGHT_CONTROLLER, CRSF_FRAMETYPE_RC_CHANNELS_PACKED, plaintext, plaintext_len);
       // printCrsfChannels((crsf_channels_t *)&plaintext);
+    }
+
+    if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_ENCRYPTED) {
+
+      unsigned long currentTime = millis();
+      unsigned long timeDiff = currentTime - lastRecvRcTime;
+      lastRecvRcTime = currentTime;
+
+      // TODO RX interval up to 7.5ms
+      if (counter % 10 == 0) {
+        DebugSerial.print("RX interval: ");
+        DebugSerial.print(timeDiff);
+        DebugSerial.println(" ms");
+      }
+
+
+      // DebugSerial.print("10 Bytes RX RC Channels ENCRYPTED: ");
+      // for (int i = 0; i < 11; i++) {
+      //   DebugSerial.print(hdr->data[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
+      //
+      uint32_t UnpackChannelData2[CRSF_NUM_CHANNELS] = {0};
+
+      uint8_t ciphertext_len = hdr->frame_size - 1 - 2; // 1: packetType, 2: crc ?
+      decryptToChannels((crsf_channels_encrypted_t *)&hdr->data[0], ciphertext_len, (crsf_channels_t *)plaintext);
+      generateChannelData((crsf_channels_t *)plaintext, UnpackChannelData2);
+      DebugSerial.print("RX RC Channels: ");
+      printChannelData(UnpackChannelData2);
+      counter++;
+ 
     }
   }
 }
