@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "crc8.h"
 #include "CrsfSerial.h"
+#include "crsf_protocol.h"
 #include "ota.h"
 
 #include "gcm.h"
@@ -34,6 +35,13 @@ void sendMspData(uint8_t* payload, uint8_t payload_len) {
     DebugSerial.println("Encryption failed");
     return;
   }
+
+  DebugSerial.print("Encrypted TX RC Channels: ");
+  for (int i = 0; i < ciphertext_len ; i++) {
+    DebugSerial.print(ciphertext[i], HEX);
+    DebugSerial.print(" ");
+  }
+  DebugSerial.println();
 
   buf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
   buf[1] = ciphertext_len + 4; // type + 'CRSF_ADDRESS_FLIGHT_CONTROLLER' + '0' +  ciphertext + crc
@@ -144,23 +152,23 @@ void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
   DebugSerial.println();
 }
 
-void generateChannelData(const crsf_channels_t* ch, uint32_t* ChannelData) {
-    ChannelData[0] = ch->ch0;
-    ChannelData[1] = ch->ch1;
-    ChannelData[2] = ch->ch2;
-    ChannelData[3] = ch->ch3;
-    ChannelData[4] = ch->ch4;
-    ChannelData[5] = ch->ch5;
-    ChannelData[6] = ch->ch6;
-    ChannelData[7] = ch->ch7;
-    ChannelData[8] = ch->ch8;
-    ChannelData[9] = ch->ch9;
-    ChannelData[10] = ch->ch10;
-    ChannelData[11] = ch->ch11;
-    ChannelData[12] = ch->ch12;
-    ChannelData[13] = ch->ch13;
-    ChannelData[14] = ch->ch14;
-    ChannelData[15] = ch->ch15;
+void generateChannelData(const crsf_channels_t* ch, uint32_t* channelData) {
+    channelData[0] = ch->ch0;
+    channelData[1] = ch->ch1;
+    channelData[2] = ch->ch2;
+    channelData[3] = ch->ch3;
+    channelData[4] = ch->ch4;
+    channelData[5] = ch->ch5;
+    channelData[6] = ch->ch6;
+    channelData[7] = ch->ch7;
+    channelData[8] = ch->ch8;
+    channelData[9] = ch->ch9;
+    channelData[10] = ch->ch10;
+    channelData[11] = ch->ch11;
+    channelData[12] = ch->ch12;
+    channelData[13] = ch->ch13;
+    channelData[14] = ch->ch14;
+    channelData[15] = ch->ch15;
 }
 
 void printChannelData(uint32_t* channelData) {
@@ -170,6 +178,61 @@ void printChannelData(uint32_t* channelData) {
     }
     DebugSerial.println();
 }
+
+void PackUInt11ToChannels4x2(const crsf_channels_t* src, uint8_t* destChannels4x2, uint8_t isHighAux) {
+    // Pack the high channels (either CH5-CH8 or CH9-CH12 depending on isHighAux)
+    if (isHighAux) {
+        // Pack the high channel(11-bits) into a 2-bits value
+        *destChannels4x2 = (CRSF_to_N(src->ch9, 4) << 0) |
+                  (CRSF_to_N(src->ch10, 4) << 2) |
+                  (CRSF_to_N(src->ch11, 4) << 4) |
+                  (CRSF_to_N(src->ch12, 4) << 6);
+    } else {
+        *destChannels4x2 = (CRSF_to_N(src->ch5, 4) << 0) |
+                  (CRSF_to_N(src->ch6, 4) << 2) |
+                  (CRSF_to_N(src->ch7, 4) << 4) |
+                  (CRSF_to_N(src->ch8, 4) << 6);
+    }
+}
+
+
+void encryptedChannels(const crsf_channels_t* src, crsf_channels_encrypted_t* dest, bool isHighAux) {
+    uint8_t buf[CRSF_MAX_PACKET_SIZE];
+    uint8_t channelData_ch5_ch12;
+    uint8_t ciphertext[MAX_CIPHERTEXT_PACKET_SIZE];
+
+    // Initialize the encrypted channels structure
+    dest->packetType = 0;  // PACKET_TYPE_RC_DATA
+    dest->free = 0;        // Reserved bits set to 0
+    dest->isHighAux = isHighAux ? 1 : 0;
+    dest->ch4 = (src->ch4 > CRSF_CHANNEL_VALUE_MID) ? 1 : 0;  // AUX1 as binary value
+
+    // Pack first 4 channels (CH0-CH3)
+    uint32_t channelData[4];
+    channelData[0] = src->ch0;
+    channelData[1] = src->ch1;
+    channelData[2] = src->ch2;
+    channelData[3] = src->ch3;
+
+    OTA_Channels_4x10 tempChannels;
+    PackUInt11ToChannels4x10(channelData, &tempChannels);
+    memcpy(buf, tempChannels.raw, sizeof(tempChannels));
+
+    PackUInt11ToChannels4x2(src, &channelData_ch5_ch12, isHighAux);
+    memcpy(buf + sizeof(tempChannels), &channelData_ch5_ch12, sizeof(channelData_ch5_ch12));
+
+    // Encrypt the channel data
+    uint8_t buf_len = sizeof(tempChannels) + sizeof(channelData_ch5_ch12);
+    int ciphertext_len = lea_gcm.encrypt(buf, buf_len, ciphertext);
+    if (ciphertext_len < 0) {
+        DebugSerial.println("Encryption failed");
+        return;
+    }
+
+    memcpy(dest->raw, ciphertext, ciphertext_len);
+}
+
+
 
 void packetChannels() {
   // DebugSerial.print("TX RC Channels: ");
@@ -187,6 +250,8 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   const crsf_header_t *hdr = (crsf_header_t *)buf;
 
   RC_Channels_t rc;
+  crsf_channels_encrypted_t ch_encrypted;
+
   uint32_t ChannelData[CRSF_NUM_CHANNELS] = {0};
   uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
 
@@ -199,14 +264,25 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       generateChannelData((crsf_channels_t *)&hdr->data, ChannelData);
       PackUInt11ToChannels4x10(&ChannelData[0], &rc.chLow);
       PackUInt11ToChannels4x10(&ChannelData[4], &rc.chHigh);
-      // for unpacking test
+
+      // unpacking for test
       UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
       UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
 
-      DebugSerial.print("10 Bytes TX RC Channels: "); // TODO: decrease to 7 bytes
+      DebugSerial.print("10 Bytes TX RC Channels: "); 
       printChannelData(UnpackChannelData);
 
-      sendMspData((uint8_t*)&rc, 10);
+      encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
+
+      // DebugSerial.print("Encrypted TX RC Channels: ");
+      // for (int i = 0; i < sizeof(ch_encrypted.raw); i++) {
+      //   DebugSerial.print(ch_encrypted.raw[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
+
+      sendMspData_handshake((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
+      // sendMspData((uint8_t*)&rc, 10);
     }
     // if (counter % 8 == 0) {
      crsf_transmitter.write(buf, len);

@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "CrsfSerial.h"
+#include "crsf_protocol.h"
 #include "ota.h"
 
 #include "gcm.h"
@@ -178,6 +179,87 @@ void printCrsfChannels(crsf_channels_t* ch) {
   // DebugSerial.println();
 }
 
+void UnpackChannels4x2ToUInt11(uint8_t const srcChannels4x2, uint32_t * const dest, uint8_t isHighAux) {
+  if (isHighAux) {
+    dest[9] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
+    dest[10] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
+    dest[11] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
+    dest[12] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
+  } else {
+    dest[5] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
+    dest[6] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
+    dest[7] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
+    dest[8] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
+  }
+}
+
+bool decryptToChannels(const crsf_channels_encrypted_t* src, uint8_t len, crsf_channels_t* dest) {
+    uint8_t plaintext[CRSF_MAX_PACKET_SIZE];
+    
+    // uint8_t len = sizeof(src->raw);
+    // Decrypt the channel data
+    int plaintext_len = lea_gcm.decrypt(&src->raw[0], len, plaintext);
+    if (plaintext_len < 0) {
+        DebugSerial.println("Decryption failed");
+        return false;
+    }
+
+    // First 5 bytes contain CH0-CH3 (packed in 10-bit format)
+    OTA_Channels_4x10 tempChannels;
+    memcpy(tempChannels.raw, plaintext, 5);  // First 5 bytes
+
+    static uint32_t channelData[CRSF_NUM_CHANNELS] = {0};
+    // Unpack CH0-CH3
+    UnpackChannels4x10ToUInt11(&tempChannels, channelData);
+    
+    dest->ch0 = channelData[0];
+    dest->ch1 = channelData[1];
+    dest->ch2 = channelData[2];
+    dest->ch3 = channelData[3];
+
+    // Get CH4 from header
+    dest->ch4 = src->ch4 ? CRSF_CHANNEL_VALUE_2000 : CRSF_CHANNEL_VALUE_1000;
+
+    // Extract CH5-CH12 from the last 1 bytes
+    uint8_t channelData_ch5_ch12;
+    memcpy(&channelData_ch5_ch12, plaintext + sizeof(tempChannels), sizeof(channelData_ch5_ch12));
+
+    UnpackChannels4x2ToUInt11(channelData_ch5_ch12, channelData, src->isHighAux);
+    dest->ch5 = channelData[5];
+    dest->ch6 = channelData[6];
+    dest->ch7 = channelData[7];
+    dest->ch8 = channelData[8];
+    dest->ch9 = channelData[9];
+    dest->ch10 = channelData[10];
+    dest->ch11 = channelData[11];
+    dest->ch12 = channelData[12];
+    dest->ch13 = channelData[13];
+    dest->ch14 = channelData[14];
+    dest->ch15 = channelData[15];
+
+    return true;
+}
+
+void generateChannelData(const crsf_channels_t* ch, uint32_t* channelData) {
+    channelData[0] = ch->ch0;
+    channelData[1] = ch->ch1;
+    channelData[2] = ch->ch2;
+    channelData[3] = ch->ch3;
+    channelData[4] = ch->ch4;
+    channelData[5] = ch->ch5;
+    channelData[6] = ch->ch6;
+    channelData[7] = ch->ch7;
+    channelData[8] = ch->ch8;
+    channelData[9] = ch->ch9;
+    channelData[10] = ch->ch10;
+    channelData[11] = ch->ch11;
+    channelData[12] = ch->ch12;
+    channelData[13] = ch->ch13;
+    channelData[14] = ch->ch14;
+    channelData[15] = ch->ch15;
+}
+
+
 void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
   crsf_receiver.write(buf, len);
   Serial.flush();
@@ -185,7 +267,7 @@ void to_crsf_receiver(const uint8_t* buf, uint8_t len) {
 
 void to_flight_controller(const uint8_t* buf, uint8_t len) {
   int plaintext_len = 0;
-  uint8_t plaintext[MAX_PLAINTEXT_PACKET_SIZE];
+  uint8_t plaintext[MAX_PLAINTEXT_PACKET_SIZE] = {0};
   Crc8 _crc = Crc8(0xd5);
 
   static int counter = 0;
@@ -203,6 +285,24 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
         handleRxHandshake((uint8_t*)(hdr->data), hdr->frame_size - 2);
         return;
       }
+
+      // DebugSerial.print("Encrypted RX RC Channels: ");
+      // DebugSerial.print(" ");
+      // for (int i = 2; i < hdr->frame_size - 2 ; i++) { // 16-2=14 bytes
+      //   DebugSerial.print(hdr->data[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
+
+      // hdr->data[2] is packet type, hdr->data[3] is start of ciphertext, 10 is length of ciphertext
+      uint32_t UnpackChannelData2[CRSF_NUM_CHANNELS] = {0};
+
+      uint8_t ciphertext_len = hdr->frame_size - 1 - 4; // 1: packetType, 4: mspType+crc
+      decryptToChannels((crsf_channels_encrypted_t *)&hdr->data[2], ciphertext_len, (crsf_channels_t *)plaintext);
+      generateChannelData((crsf_channels_t *)plaintext, UnpackChannelData2);
+      DebugSerial.print("Decrypted RX RC Channels: ");
+      printChannelData(UnpackChannelData2);
+      return;
 
       // TODO: why data[2]? should be data[3]?
       plaintext_len = lea_gcm.decrypt(&hdr->data[2], hdr->frame_size - 4, plaintext);
