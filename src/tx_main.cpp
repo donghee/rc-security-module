@@ -71,6 +71,20 @@ void sendMspData_handshake(uint8_t* payload, uint8_t payload_len) {
   crsf_transmitter.write(buf, payload_len + 6);
 }
 
+void sendCrsfRcChannelsEncrypted(uint8_t* payload, uint8_t payload_len) {
+  Crc8 _crc = Crc8(0xd5);
+
+  uint8_t buf[CRSF_MAX_PACKET_SIZE];
+
+  buf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+  buf[1] = payload_len + 2; // type + ciphertext + crc
+  buf[2] = CRSF_FRAMETYPE_RC_CHANNELS_ENCRYPTED;
+  memcpy(&buf[3], payload, payload_len);
+  buf[payload_len+3] = _crc.calc(&buf[2], payload_len + 1);
+
+  crsf_transmitter.write(buf, payload_len + 4);
+}
+
 enum HandshakeState {
     WAITING_HELLO = 0,
     SENT_ACK,
@@ -171,13 +185,20 @@ void generateChannelData(const crsf_channels_t* ch, uint32_t* channelData) {
     channelData[15] = ch->ch15;
 }
 
-void printChannelData(uint32_t* channelData) {
-    for (int i = 0; i < 8; i++) {
-        DebugSerial.print(channelData[i]);
-        DebugSerial.print(" ");
-    }
-    DebugSerial.println();
+void UnpackChannels4x2ToUInt11(uint8_t const srcChannels4x2, uint32_t * const dest, uint8_t isHighAux) {
+  if (isHighAux) {
+    dest[9] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
+    dest[10] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
+    dest[11] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
+    dest[12] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
+  } else {
+    dest[5] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
+    dest[6] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
+    dest[7] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
+    dest[8] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
+  }
 }
+
 
 void PackUInt11ToChannels4x2(const crsf_channels_t* src, uint8_t* destChannels4x2, uint8_t isHighAux) {
     // Pack the high channels (either CH5-CH8 or CH9-CH12 depending on isHighAux)
@@ -232,6 +253,29 @@ void encryptedChannels(const crsf_channels_t* src, crsf_channels_encrypted_t* de
     memcpy(dest->raw, ciphertext, ciphertext_len);
 }
 
+void printCrsfChannels(crsf_channels_t* src) {
+    static uint32_t channelData[CRSF_NUM_CHANNELS] = {0};
+
+    OTA_Channels_4x10 tempChannels;
+    channelData[0] = src->ch0;
+    channelData[1] = src->ch1;
+    channelData[2] = src->ch2;
+    channelData[3] = src->ch3;
+    PackUInt11ToChannels4x10(channelData, &tempChannels);
+    UnpackChannels4x10ToUInt11(&tempChannels, channelData);
+    channelData[4] = src->ch4 ? CRSF_CHANNEL_VALUE_2000 : CRSF_CHANNEL_VALUE_1000;
+
+    // Extract CH5-CH12 from the last 1 bytes
+    uint8_t channelData_ch5_ch12;
+    PackUInt11ToChannels4x2(src, &channelData_ch5_ch12, false);
+    UnpackChannels4x2ToUInt11(channelData_ch5_ch12, channelData, false);
+
+    for (int i = 0; i < 8; i++) {
+        DebugSerial.print(channelData[i]);
+        DebugSerial.print(" ");
+    }
+    DebugSerial.println();
+}
 
 
 void packetChannels() {
@@ -269,25 +313,24 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
       UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
 
-      DebugSerial.print("10 Bytes TX RC Channels: "); 
-      printChannelData(UnpackChannelData);
-
+      DebugSerial.print("TX RC Channels: ");
+      printCrsfChannels((crsf_channels_t *)&hdr->data);
       encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
 
       // DebugSerial.print("Encrypted TX RC Channels: ");
-      // for (int i = 0; i < sizeof(ch_encrypted.raw); i++) {
+      // for (int i = 0; i < 10; i++) {
       //   DebugSerial.print(ch_encrypted.raw[i], HEX);
       //   DebugSerial.print(" ");
       // }
       // DebugSerial.println();
 
-      sendMspData_handshake((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
+      sendCrsfRcChannelsEncrypted((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
+      // sendMspData_handshake((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
       // sendMspData((uint8_t*)&rc, 10);
     }
-    // if (counter % 8 == 0) {
-     crsf_transmitter.write(buf, len);
-     Serial.flush();
-    // }
+    // crsf_transmitter.write(buf, len); // len is 26
+    Serial.flush();
+
     unsigned long currentTime = millis();
     unsigned long timeDiff = currentTime - lastSendMspTime;
 
