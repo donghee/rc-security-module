@@ -383,10 +383,24 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       uint8_t ciphertext_len = hdr->frame_size - 1 - 2; // 1: packetType, 2: crc ?
       decryptToChannels((crsf_channels_encrypted_t *)&hdr->data[0], ciphertext_len, (crsf_channels_t *)plaintext);
       generateChannelData((crsf_channels_t *)plaintext, UnpackChannelData2);
-      DebugSerial.print("RX RC Channels: ");
+      DebugSerial.print("RX RC Security Module Channels: ");
       printChannelData(UnpackChannelData2);
-      counter++;
- 
+
+      crsf_channels_t crsf_channels = generateCrsfChannels(UnpackChannelData2);
+
+      uint8_t _fcBuf[CRSF_MAX_PACKET_SIZE];
+      memset(_fcBuf, 0, CRSF_MAX_PACKET_SIZE);
+      _fcBuf[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+      _fcBuf[1] = 22 + 2; // type + payload: 22 Bytes(RC Channels) + crc
+      _fcBuf[2] = CRSF_FRAMETYPE_RC_CHANNELS_PACKED;
+      // memcpy(&_fcBuf[3], plaintext, plaintext_len);
+      memcpy(&_fcBuf[3], &crsf_channels, sizeof(crsf_channels_t));
+      _fcBuf[22+3] = _crc.calc(&_fcBuf[2], 22 + 1);
+      // TODO write rc channels to fc
+      flight_controller.write(_fcBuf, 22 + 4);
+      Serial1.flush();
+
+      counter = (counter + 1) % 256;
     }
   }
 }
