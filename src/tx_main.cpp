@@ -263,7 +263,7 @@ void printCrsfChannels(crsf_channels_t* src) {
     channelData[3] = src->ch3;
     PackUInt11ToChannels4x10(channelData, &tempChannels);
     UnpackChannels4x10ToUInt11(&tempChannels, channelData);
-    channelData[4] = src->ch4 ? CRSF_CHANNEL_VALUE_2000 : CRSF_CHANNEL_VALUE_1000;
+    channelData[4] = src->ch4 > CRSF_CHANNEL_VALUE_MID ? CRSF_CHANNEL_VALUE_2000 : CRSF_CHANNEL_VALUE_1000;
 
     // Extract CH5-CH12 from the last 1 bytes
     uint8_t channelData_ch5_ch12;
@@ -313,7 +313,7 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
       UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
 
-      DebugSerial.print("TX RC Channels: ");
+      DebugSerial.print("TX RC Security Module Channels: ");
       printCrsfChannels((crsf_channels_t *)&hdr->data);
       encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
 
@@ -335,9 +335,11 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
     unsigned long timeDiff = currentTime - lastSendMspTime;
 
     // 실행 주기 출력
-    // DebugSerial.print("TX interval: ");
-    // DebugSerial.print(timeDiff);
-    // DebugSerial.println(" ms");
+    if (counter % 10 == 0) {
+      DebugSerial.print("TX interval: ");
+      DebugSerial.print(timeDiff);
+      DebugSerial.println(" ms");
+    }
 
     // 현재 시간을 마지막 실행 시간으로 저장
     lastSendMspTime = currentTime;
