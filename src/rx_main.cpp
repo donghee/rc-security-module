@@ -26,7 +26,7 @@ enum HandshakeState {
     SENT_HELLO,
     WAITING_ACK,
     SENT_PUBKEY,
-    WAITING_DATA,
+    WAITING_PUBKEY,
     SENT_BYE,
     COMPLETED
 };
@@ -81,13 +81,13 @@ void handleRxHandshake(uint8_t* data, uint8_t len) {
       handshakeState = SENT_PUBKEY;
       lastHandshakeTime = millis();
       DebugSerial.println("Handshake() PUBKEY -->");
-      handshakeState = WAITING_DATA;
+      handshakeState = WAITING_PUBKEY;
       lastHandshakeTime = millis();
     }
     break;
-  case WAITING_DATA:
+  case WAITING_PUBKEY:
     if (msgType == MSP_DATA) {
-      DebugSerial.println("--> Handshake() SENT_DATA");
+      DebugSerial.println("--> Handshake() SENT_PUBKEY");
       // 데이터 복호화 시도
       bool decryption_success = true; // 실제 복호화 로직 필요
       if (decryption_success) {
