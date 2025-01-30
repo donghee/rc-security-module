@@ -89,7 +89,7 @@ enum HandshakeState {
     WAITING_HELLO = 0,
     SENT_ACK,
     WAITING_PUBKEY,
-    SENT_DATA,
+    SENT_PUBKEY,
     WAITING_BYE,
     COMPLETED
 };
@@ -136,9 +136,9 @@ void handleTxHandshake(uint8_t* data, uint8_t len) {
       // pubkey를 받으면, 암호화 하여 데이터(경량암호키)를 보냄
       uint8_t ciphertext[] = {MSP_DATA, 0x01, 0x02, 0x03, 0x04};
       sendMspData_handshake(ciphertext, sizeof(ciphertext));
-      handshakeState = SENT_DATA;
+      handshakeState = SENT_PUBKEY;
       lastHandshakeTime = millis();
-      DebugSerial.println("Handshake() SENT_DATA -->");
+      DebugSerial.println("Handshake() SENT_PUBKEY -->");
       handshakeState = WAITING_BYE;
       lastHandshakeTime = millis();
     }
