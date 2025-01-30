@@ -156,7 +156,6 @@ void handleTxHandshake(uint8_t* data, uint8_t len) {
   }
 }
 
-
 void encryptedPacketChannels(uint8_t* buf, uint8_t len) {
   DebugSerial.print("Encrypted RC Channels: ");
   for (int i = 0; i < len + 4; i++) {
@@ -184,38 +183,6 @@ void generateChannelData(const crsf_channels_t* ch, uint32_t* channelData) {
     channelData[14] = ch->ch14;
     channelData[15] = ch->ch15;
 }
-
-void UnpackChannels4x2ToUInt11(uint8_t const srcChannels4x2, uint32_t * const dest, uint8_t isHighAux) {
-  if (isHighAux) {
-    dest[9] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
-    dest[10] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
-    dest[11] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
-    dest[12] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
-  } else {
-    dest[5] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
-    dest[6] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
-    dest[7] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
-    dest[8] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
-  }
-}
-
-
-void PackUInt11ToChannels4x2(const crsf_channels_t* src, uint8_t* destChannels4x2, uint8_t isHighAux) {
-    // Pack the high channels (either CH5-CH8 or CH9-CH12 depending on isHighAux)
-    if (isHighAux) {
-        // Pack the high channel(11-bits) into a 2-bits value
-        *destChannels4x2 = (CRSF_to_N(src->ch9, 4) << 0) |
-                  (CRSF_to_N(src->ch10, 4) << 2) |
-                  (CRSF_to_N(src->ch11, 4) << 4) |
-                  (CRSF_to_N(src->ch12, 4) << 6);
-    } else {
-        *destChannels4x2 = (CRSF_to_N(src->ch5, 4) << 0) |
-                  (CRSF_to_N(src->ch6, 4) << 2) |
-                  (CRSF_to_N(src->ch7, 4) << 4) |
-                  (CRSF_to_N(src->ch8, 4) << 6);
-    }
-}
-
 
 void encryptedChannels(const crsf_channels_t* src, crsf_channels_encrypted_t* dest, bool isHighAux) {
     uint8_t buf[CRSF_MAX_PACKET_SIZE];
@@ -288,6 +255,9 @@ void packetChannels() {
   //  DebugSerial.println();
 }
 
+static unsigned long lastRcChannelTime = 0;  // 마지막 처리 시간
+#define RC_CHANNEL_MIN_INTERVAL 5  // 최소 간격 ms
+static uint16_t rc_channel_interval = RC_CHANNEL_MIN_INTERVAL;  // 기본 간격
 
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   static uint8_t counter = 0;
@@ -305,6 +275,16 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
     // sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
       // sendMspData((uint8_t*)(hdr->data), 10); // 12ms
       
+      unsigned long currentTime = millis();
+      // 설정된 간격보다 적게 지났으면 처리하지 않음
+      if (currentTime - lastRcChannelTime < rc_channel_interval) {
+        return;
+      }
+    
+      // 마지막 처리 시간 업데이트
+      lastRcChannelTime = currentTime;
+
+
       generateChannelData((crsf_channels_t *)&hdr->data, ChannelData);
       PackUInt11ToChannels4x10(&ChannelData[0], &rc.chLow);
       PackUInt11ToChannels4x10(&ChannelData[4], &rc.chHigh);

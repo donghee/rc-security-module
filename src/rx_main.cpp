@@ -180,20 +180,6 @@ void printCrsfChannels(crsf_channels_t* ch) {
   // DebugSerial.println();
 }
 
-void UnpackChannels4x2ToUInt11(uint8_t const srcChannels4x2, uint32_t * const dest, uint8_t isHighAux) {
-  if (isHighAux) {
-    dest[9] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
-    dest[10] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
-    dest[11] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
-    dest[12] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
-  } else {
-    dest[5] = N_to_CRSF((srcChannels4x2 >> 0) & 0x03, 3);
-    dest[6] = N_to_CRSF((srcChannels4x2 >> 2) & 0x03, 3);
-    dest[7] = N_to_CRSF((srcChannels4x2 >> 4) & 0x03, 3);
-    dest[8] = N_to_CRSF((srcChannels4x2 >> 6) & 0x03, 3);
-  }
-}
-
 bool decryptToChannels(const crsf_channels_encrypted_t* src, uint8_t len, crsf_channels_t* dest) {
     uint8_t plaintext[CRSF_MAX_PACKET_SIZE];
     
@@ -370,21 +356,20 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
         DebugSerial.println(" ms");
       }
 
+      DebugSerial.print("RX RC Channels ENCRYPTED: ");
+      for (int i = 0; i < 11; i++) {
+        DebugSerial.print(hdr->data[i], HEX);
+        DebugSerial.print(" ");
+      }
+      DebugSerial.println();
 
-      // DebugSerial.print("10 Bytes RX RC Channels ENCRYPTED: ");
-      // for (int i = 0; i < 11; i++) {
-      //   DebugSerial.print(hdr->data[i], HEX);
-      //   DebugSerial.print(" ");
-      // }
-      // DebugSerial.println();
-      //
       uint32_t UnpackChannelData2[CRSF_NUM_CHANNELS] = {0};
 
       uint8_t ciphertext_len = hdr->frame_size - 1 - 2; // 1: packetType, 2: crc ?
       decryptToChannels((crsf_channels_encrypted_t *)&hdr->data[0], ciphertext_len, (crsf_channels_t *)plaintext);
       generateChannelData((crsf_channels_t *)plaintext, UnpackChannelData2);
-      DebugSerial.print("RX RC Security Module Channels: ");
-      printChannelData(UnpackChannelData2);
+      // DebugSerial.print("RX RC Security Module Channels: ");
+      // printChannelData(UnpackChannelData2);
 
       crsf_channels_t crsf_channels = generateCrsfChannels(UnpackChannelData2);
 
