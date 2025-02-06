@@ -255,9 +255,9 @@ void packetChannels() {
   //  DebugSerial.println();
 }
 
-static unsigned long lastRcChannelTime = 0;  // 마지막 처리 시간
-#define RC_CHANNEL_MIN_INTERVAL 5  // 최소 간격 ms
-static uint16_t rc_channel_interval = RC_CHANNEL_MIN_INTERVAL;  // 기본 간격
+// static unsigned long lastRcChannelTime = 0;  // 마지막 처리 시간
+// #define RC_CHANNEL_MIN_INTERVAL 5  // 최소 간격 ms
+// static uint16_t rc_channel_interval = RC_CHANNEL_MIN_INTERVAL;  // 기본 간격
 
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   static uint8_t counter = 0;
@@ -275,14 +275,14 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
     // sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
       // sendMspData((uint8_t*)(hdr->data), 10); // 12ms
       
-      unsigned long currentTime = millis();
-      // 설정된 간격보다 적게 지났으면 처리하지 않음
-      if (currentTime - lastRcChannelTime < rc_channel_interval) {
-        return;
-      }
+      // unsigned long currentTime = millis();
+      // // 설정된 간격보다 적게 지났으면 처리하지 않음
+      // if (currentTime - lastRcChannelTime < rc_channel_interval) {
+      //   return;
+      // }
     
       // 마지막 처리 시간 업데이트
-      lastRcChannelTime = currentTime;
+      // lastRcChannelTime = currentTime;
 
 
       generateChannelData((crsf_channels_t *)&hdr->data, ChannelData);
@@ -293,16 +293,16 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
       UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
 
-      DebugSerial.print("TX RC Security Module Channels: ");
-      printCrsfChannels((crsf_channels_t *)&hdr->data);
+      // DebugSerial.print("TX RC Security Module Channels: ");
+      // printCrsfChannels((crsf_channels_t *)&hdr->data);
       encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
 
-      // DebugSerial.print("Encrypted TX RC Channels: ");
-      // for (int i = 0; i < 10; i++) {
-      //   DebugSerial.print(ch_encrypted.raw[i], HEX);
-      //   DebugSerial.print(" ");
-      // }
-      // DebugSerial.println();
+      DebugSerial.print("Encrypted TX RC Channels: ");
+      for (int i = 0; i < 10; i++) {
+        DebugSerial.print(ch_encrypted.raw[i], HEX);
+        DebugSerial.print(" ");
+      }
+      DebugSerial.println();
 
       sendCrsfRcChannelsEncrypted((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
       // sendMspData_handshake((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext

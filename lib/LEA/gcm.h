@@ -18,6 +18,8 @@ extern "C"
 #define  ARM_CM_DWT_CTRL   (*(uint32_t *)0xE0001000)
 #define  ARM_CM_DWT_CYCCNT (*(uint32_t *)0xE0001004)
 
+// #include <Arduino.h>
+// HardwareSerial DebugSerial(UART5);
 
 /*  LEA GCM encryption and decryption
  */
@@ -39,6 +41,10 @@ private:
     uint16_t COUNTER_RX_new;
     uint16_t COUNTER_RX_gap;
     int initStatus = 0;
+
+    uint8_t COUNTER_4b;
+    uint8_t COUNTER_4b_new;
+    uint8_t COUNTER_4b_gap;
 
     // uint8_t payload[LEA_MAX_PAYLOAD_SIZE];
     // uint32_t getPayloadLen(const uint8_t *data);
