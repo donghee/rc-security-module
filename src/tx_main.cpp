@@ -364,15 +364,13 @@ void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
   }
 
   // TODO: Fix Occour Emergency Error from 2025.01.17
-  // radio_transmitter.write(buf, len);
-  // Serial1.flush();
-  // DebugSerial.print("ELRS TX->Radio Transmitter: ");
+  // radio_transmitter.queueTxBuffer(buf, len);
 }
 
 void setup() {
   SystemClock_Config();
 
-  // RC Controller: UART1
+  // Radio Transmitter: UART1 PA9 TX, PA10 RX
   Serial1.setTx(PA_9);
   Serial1.setRx(PA_10);
 

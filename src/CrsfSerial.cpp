@@ -13,9 +13,9 @@ extern HardwareSerial DebugSerial;
 //         while (len > 0 && linepos < 16)
 //         {
 //             if (*data < 0x0f)
-//             Serial.write('0');
-//             Serial.print(*data, HEX);
-//             Serial.write(' ');
+//             DebugSerial.write('0');
+//             DebugSerial.print(*data, HEX);
+//             DebugSerial.write(' ');
 //             ++data;
 //             ++linepos;
 //             --len;
@@ -23,12 +23,12 @@ extern HardwareSerial DebugSerial;
 
 //         // Spacer to align last line
 //         for (uint8_t i = linepos; i < 16; ++i)
-//             Serial.print("   ");
+//             DebugSerial.print("   ");
 
 //         // ASCII part
 //         for (uint8_t i = 0; i < linepos; ++i)
-//             Serial.write((linestart[i] < ' ') ? '.' : linestart[i]);
-//         Serial.println();
+//             DebugSerial.write((linestart[i] < ' ') ? '.' : linestart[i]);
+//         DebugSerial.println();
 //     }
 // }
 
@@ -168,12 +168,16 @@ void CrsfSerial::processPacketIn(uint8_t len)
         }
     } // CRSF_ADDRESS_CRSF_TRANSMITTER
 
+    // Send any queued data
+    if (_txBufPos > 0 && !_port.available())
+    {
+        write(_txBuf, _txBufPos);
+        _txBufPos = 0;
+    }
+
     if (onForward) {
       onForward((const uint8_t*)hdr, hdr->frame_size + 2);
     }
-
-    // DebugSerial.print("hdr addr: ");
-    // DebugSerial.println(hdr->device_addr, HEX);
 }
 
 // Shift the bytes in the RxBuf down by cnt bytes
@@ -261,6 +265,12 @@ void CrsfSerial::write(uint8_t b)
 void CrsfSerial::write(const uint8_t *buf, size_t len)
 {
     _port.write(buf, len);
+}
+
+void CrsfSerial::queueTxBuffer(const uint8_t *buf, size_t len)
+{
+    memcpy(_txBuf, buf, len);
+    _txBufPos = len;
 }
 
 void CrsfSerial::queuePacket(uint8_t addr, uint8_t type, const void *payload, uint8_t len)
