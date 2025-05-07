@@ -133,16 +133,16 @@ int GCM::encrypt(const uint8_t *plaintext, int plaintext_len, uint8_t *ciphertex
     increment_nonce_counter(N);
 
     // 2025. 2  Print TX Nonce
-    DebugSerial.print("TX COUNTER: ");
-    DebugSerial.print(COUNTER_TX);
-    DebugSerial.println("");
-    DebugSerial.print("TX Nonce: ");
-    for (int i = 0; i < 16; i++)
-    {
-        DebugSerial.print(N[i], HEX);
-        DebugSerial.print(" ");
-    }
-    DebugSerial.println("");
+    // DebugSerial.print("TX COUNTER: ");
+    // DebugSerial.print(COUNTER_TX);
+    // DebugSerial.println("");
+    // DebugSerial.print("TX Nonce: ");
+    // for (int i = 0; i < 16; i++)
+    // {
+    //     DebugSerial.print(N[i], HEX);
+    //     DebugSerial.print(" ");
+    // }
+    // DebugSerial.println("");
 
     ciphertext[0] = (uint8_t)(COUNTER_TX >> 8); // 2 bytes
     ciphertext[1] = (uint8_t)COUNTER_TX;
