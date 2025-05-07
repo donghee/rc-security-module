@@ -172,12 +172,12 @@ void printCrsfChannels(crsf_channels_t* ch) {
   }
 
   // Print channel values
-  // DebugSerial.print("RX RC Channels: ");
-  // for (int i = 0; i < 8; i++) {
-  //   DebugSerial.print(_channels[i]);
-  //   DebugSerial.print(" ");
-  // }
-  // DebugSerial.println();
+  DebugSerial.print("RX RC Channels: ");
+  for (int i = 0; i < 8; i++) {
+    DebugSerial.print(_channels[i]);
+    DebugSerial.print(" ");
+  }
+  DebugSerial.println();
 }
 
 bool decryptToChannels(const crsf_channels_encrypted_t* src, uint8_t len, crsf_channels_t* dest) {
@@ -187,7 +187,7 @@ bool decryptToChannels(const crsf_channels_encrypted_t* src, uint8_t len, crsf_c
     // Decrypt the channel data
     int plaintext_len = lea_gcm.decrypt(&src->raw[0], len, plaintext);
     if (plaintext_len < 0) {
-        DebugSerial.println("Decryption failed");
+        // DebugSerial.println("Decryption failed");
         return false;
     }
 
@@ -386,6 +386,12 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       Serial1.flush();
 
       counter = (counter + 1) % 256;
+    }
+
+    if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
+      crsf_channels_t crsf_channels = generateCrsfChannels((uint32_t*)&hdr->data[0]);
+      printCrsfChannels(&crsf_channels);
+      flight_controller.write(buf, len);
     }
   }
 }

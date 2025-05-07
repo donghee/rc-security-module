@@ -21,6 +21,8 @@ HardwareSerial DebugSerial(UART5);
 
 static unsigned long lastSendMspTime = 0;
 
+static uint8_t securityType = 0;
+
 void encryptedPacketChannels(uint8_t* buf, uint8_t len);
 
 void sendMspData(uint8_t* payload, uint8_t payload_len) {
@@ -269,7 +271,26 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   uint32_t ChannelData[CRSF_NUM_CHANNELS] = {0};
   uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
 
-  if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
+  if (hdr->type == CRSF_FRAMETYPE_PARAMETER_WRITE) {
+      // DebugSerial.println("---");
+      // DebugSerial.println("CRSF_FRAME PARAMETER_WRITE: ");
+      // for (int i = 0; i < len; i++) {
+      //   DebugSerial.print(buf[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println("");
+      // DebugSerial.println("---");
+      if (buf[3] == 0xEE && buf[4] == 0xEF) { // 0xEE destination CRSF_TRANSMITTER, 0xEF source ?
+        // set rc_channel_interval
+        if (buf[5] == 0x01) { // 0x01 is parameter index for rc security type
+          securityType = buf[6];
+          DebugSerial.print("Set RC Channel Security Type: ");
+          DebugSerial.println(securityType);
+        }
+      }
+  }
+ 
+  if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED && securityType > 0) {
      if (handshakeState == COMPLETED) {
     // sendMspData((uint8_t*)(hdr->data), hdr->frame_size - 2); // send msp to flight controller from security module
     // sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
@@ -297,12 +318,12 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       // printCrsfChannels((crsf_channels_t *)&hdr->data);
       encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
 
-      DebugSerial.print("Encrypted TX RC Channels: ");
-      for (int i = 0; i < 10; i++) {
-        DebugSerial.print(ch_encrypted.raw[i], HEX);
-        DebugSerial.print(" ");
-      }
-      DebugSerial.println();
+      // DebugSerial.print("Encrypted TX RC Channels: ");
+      // for (int i = 0; i < 10; i++) {
+      //   DebugSerial.print(ch_encrypted.raw[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
 
       sendCrsfRcChannelsEncrypted((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
       // sendMspData_handshake((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
@@ -315,15 +336,16 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
     unsigned long timeDiff = currentTime - lastSendMspTime;
 
     // 실행 주기 출력
-    if (counter % 10 == 0) {
-      DebugSerial.print("TX interval: ");
-      DebugSerial.print(timeDiff);
-      DebugSerial.println(" ms");
-    }
+    // if (counter % 10 == 0) {
+    //   DebugSerial.print("TX interval: ");
+    //   DebugSerial.print(timeDiff);
+    //   DebugSerial.println(" ms");
+    // }
 
     // 현재 시간을 마지막 실행 시간으로 저장
     lastSendMspTime = currentTime;
   } else {
+    // no encryption
     crsf_transmitter.write(buf, len);
     Serial.flush();
   }
@@ -364,7 +386,7 @@ void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
   }
 
   // TODO: Fix Occour Emergency Error from 2025.01.17
-  // radio_transmitter.queueTxBuffer(buf, len);
+  radio_transmitter.queueTxBuffer(buf, len);
 }
 
 void setup() {
