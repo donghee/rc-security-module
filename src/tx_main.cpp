@@ -385,8 +385,13 @@ void to_radio_transmitter(const uint8_t* buf, uint8_t len) {
     }
   }
 
-  // TODO: Fix Occour Emergency Error from 2025.01.17
-  radio_transmitter.queueTxBuffer(buf, len);
+  if ( hdr->type == CRSF_FRAMETYPE_PARAMETER_WRITE
+    || hdr->type == CRSF_FRAMETYPE_PARAMETER_SETTINGS_ENTRY
+    || hdr->type == CRSF_FRAMETYPE_DEVICE_INFO
+    // || hdr->type == CRSF_FRAMETYPE_LINK_STATISTICS // The LINK_STATISTICS Frame occour Error to EdgeTX
+  ) {
+    radio_transmitter.queueTxBuffer(buf, len);
+  }
 }
 
 void setup() {
