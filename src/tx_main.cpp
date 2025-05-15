@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <EEPROM.h>
 #include "crc8.h"
 #include "CrsfSerial.h"
 #include "crsf_protocol.h"
@@ -22,6 +23,9 @@ HardwareSerial DebugSerial(UART5);
 static unsigned long lastSendMspTime = 0;
 
 static uint8_t securityType = 0;
+static int securityIsReady = -1;
+static unsigned long resetTime = 0;
+static bool resetScheduled = false;
 
 void encryptedPacketChannels(uint8_t* buf, uint8_t len);
 
@@ -247,20 +251,6 @@ void printCrsfChannels(crsf_channels_t* src) {
 }
 
 
-void packetChannels() {
-  // DebugSerial.print("TX RC Channels: ");
-  // // for (int i = 0; i < 16; i++) {
-  // for (int i = 0; i < 8; i++) {
-  //   DebugSerial.print(radio_transmitter.getChannel(i + 1));
-  //   DebugSerial.print(" ");
-  // }
-  //  DebugSerial.println();
-}
-
-// static unsigned long lastRcChannelTime = 0;  // 마지막 처리 시간
-// #define RC_CHANNEL_MIN_INTERVAL 5  // 최소 간격 ms
-// static uint16_t rc_channel_interval = RC_CHANNEL_MIN_INTERVAL;  // 기본 간격
-
 void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   static uint8_t counter = 0;
   const crsf_header_t *hdr = (crsf_header_t *)buf;
@@ -272,50 +262,34 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
   uint32_t UnpackChannelData[CRSF_NUM_CHANNELS] = {0};
 
   if (hdr->type == CRSF_FRAMETYPE_PARAMETER_WRITE) {
-      // DebugSerial.println("---");
-      // DebugSerial.println("CRSF_FRAME PARAMETER_WRITE: ");
-      // for (int i = 0; i < len; i++) {
-      //   DebugSerial.print(buf[i], HEX);
-      //   DebugSerial.print(" ");
-      // }
-      // DebugSerial.println("");
-      // DebugSerial.println("---");
       if (buf[3] == 0xEE && buf[4] == 0xEF) { // 0xEE destination CRSF_TRANSMITTER, 0xEF source ?
-        // set rc_channel_interval
         if (buf[5] == 0x01) { // 0x01 is parameter index for rc security type
-          securityType = buf[6];
-          DebugSerial.print("Set RC Channel Security Type: ");
-          DebugSerial.println(securityType);
+          // if securityType changed, write to EEPROM and update securityType
+          if (securityType != buf[6]) {
+            securityType = buf[6];
+         	  EEPROM.write(0x00, securityType); // 0: Off, 1: LEA-GCM, 2: ASCON
+            DebugSerial.print("Set Security Type: ");
+            DebugSerial.println(securityType);
+          
+            // Reset the system after 3 seconds, When new security type is set
+            resetTime = millis() + 3000;
+            resetScheduled = true;
+            DebugSerial.println("System will reset in 3 seconds...");
+          }
         }
       }
   }
  
-  if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED && securityType > 0) {
+  if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED && securityType > 0 && securityIsReady == 0) {
      if (handshakeState == COMPLETED) {
-    // sendMspData((uint8_t*)(hdr->data), hdr->frame_size - 2); // send msp to flight controller from security module
-    // sendMspData((uint8_t*)(hdr->data), 11); // 11 bits x 8 channels == 88 bits == 11 bytes
-      // sendMspData((uint8_t*)(hdr->data), 10); // 12ms
-      
-      // unsigned long currentTime = millis();
-      // // 설정된 간격보다 적게 지났으면 처리하지 않음
-      // if (currentTime - lastRcChannelTime < rc_channel_interval) {
-      //   return;
-      // }
-    
-      // 마지막 처리 시간 업데이트
-      // lastRcChannelTime = currentTime;
-
-
       generateChannelData((crsf_channels_t *)&hdr->data, ChannelData);
-      PackUInt11ToChannels4x10(&ChannelData[0], &rc.chLow);
-      PackUInt11ToChannels4x10(&ChannelData[4], &rc.chHigh);
-
-      // unpacking for test
-      UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
-      UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
+      // Packing and Unpacking for test
+      // PackUInt11ToChannels4x10(&ChannelData[0], &rc.chLow);
+      // PackUInt11ToChannels4x10(&ChannelData[4], &rc.chHigh);
+      // UnpackChannels4x10ToUInt11(&rc.chLow, &UnpackChannelData[0]);
+      // UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
 
       // DebugSerial.print("TX RC Security Module Channels: ");
-      // printCrsfChannels((crsf_channels_t *)&hdr->data);
       encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
 
       // DebugSerial.print("Encrypted TX RC Channels: ");
@@ -326,31 +300,11 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       // DebugSerial.println();
 
       sendCrsfRcChannelsEncrypted((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
-      // sendMspData_handshake((uint8_t*)&ch_encrypted, 11); // 1 packetType + 10 ciphertext
-      // sendMspData((uint8_t*)&rc, 10);
     }
-    // crsf_transmitter.write(buf, len); // len is 26
-    Serial.flush();
-
-    unsigned long currentTime = millis();
-    unsigned long timeDiff = currentTime - lastSendMspTime;
-
-    // 실행 주기 출력
-    // if (counter % 10 == 0) {
-    //   DebugSerial.print("TX interval: ");
-    //   DebugSerial.print(timeDiff);
-    //   DebugSerial.println(" ms");
-    // }
-
-    // 현재 시간을 마지막 실행 시간으로 저장
-    lastSendMspTime = currentTime;
   } else {
-    // no encryption
     crsf_transmitter.write(buf, len);
-    Serial.flush();
   }
-  // DebugSerial.print("Radio Transmitter->ELRS TX: ");
-  // DebugSerial.println("TX RC Channels: 992 992 173 992 173 173 173 173");
+  Serial.flush();
   counter = (counter + 1) % 256;
 }
 
@@ -405,19 +359,22 @@ void setup() {
   Serial.setTx(PC_10);
   Serial.setRx(PC_11);
 
-  radio_transmitter.begin();
-  radio_transmitter.onPacketChannels = &packetChannels;
-  radio_transmitter.onForward = &to_crsf_transmitter;
-
-  crsf_transmitter.begin();
-  crsf_transmitter.onForward = &to_radio_transmitter;
-
   // Debug: UART5
   DebugSerial.setTx(PC_12);
   DebugSerial.setRx(PD_2);
   DebugSerial.begin(420000);
 
-  lea_gcm.init();
+  radio_transmitter.begin();
+  radio_transmitter.onForward = &to_crsf_transmitter;
+
+  crsf_transmitter.begin();
+  crsf_transmitter.onForward = &to_radio_transmitter;
+
+  DebugSerial.println("Starting TX RC Module ...");
+  DebugSerial.print("Security Type: ");
+  DebugSerial.println(securityType);
+  securityType = EEPROM.read(0x00);
+  securityIsReady = lea_gcm.init();
 
   // SKIP handshake
   handshakeState = COMPLETED;
@@ -426,6 +383,12 @@ void setup() {
 void loop() {
   radio_transmitter.loop();
   crsf_transmitter.loop();
+
+  // 비동기 리셋 체크
+  if (resetScheduled && millis() >= resetTime) {
+    DebugSerial.println("Executing scheduled reset now...");
+    NVIC_SystemReset();
+  }
 
   return; // SKIP handshake
 
