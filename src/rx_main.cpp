@@ -20,6 +20,9 @@ HardwareSerial DebugSerial(UART5);
 static unsigned long lastRecvMspTime = 0;
 static unsigned long lastRecvRcTime = 0;
 
+static uint8_t securityType = 0;
+static int securityIsReady = -1;
+
 // Handshake states and messages
 enum HandshakeState {
     INIT = 0,
@@ -183,11 +186,24 @@ void printCrsfChannels(crsf_channels_t* ch) {
 bool decryptToChannels(const crsf_channels_encrypted_t* src, uint8_t len, crsf_channels_t* dest) {
     uint8_t plaintext[CRSF_MAX_PACKET_SIZE];
     
+    if (securityType == 1 && src->securityType == 2) {
+        DebugSerial.println("LEA-GCM -> ASCON, reset system");
+        NVIC_SystemReset(); // Restart the system
+        return false;
+    }
+
+    if (securityType == 2 && src->securityType == 1) {
+        DebugSerial.println("ASCON -> LEA-GCM, reset system");
+        NVIC_SystemReset(); // Restart the system
+        return false;
+    }
+    securityType = src->securityType;
+
     // uint8_t len = sizeof(src->raw);
     // Decrypt the channel data
     int plaintext_len = lea_gcm.decrypt(&src->raw[0], len, plaintext);
     if (plaintext_len < 0) {
-        // DebugSerial.println("Decryption failed");
+        DebugSerial.println("Decryption failed");
         return false;
     }
 
@@ -368,8 +384,8 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       uint8_t ciphertext_len = hdr->frame_size - 1 - 2; // 1: packetType, 2: crc ?
       decryptToChannels((crsf_channels_encrypted_t *)&hdr->data[0], ciphertext_len, (crsf_channels_t *)plaintext);
       generateChannelData((crsf_channels_t *)plaintext, UnpackChannelData2);
-      // DebugSerial.print("RX RC Security Module Channels: ");
-      // printChannelData(UnpackChannelData2);
+      DebugSerial.print("RX Encrypted RC Channels: ");
+      printChannelData(UnpackChannelData2);
 
       crsf_channels_t crsf_channels = generateCrsfChannels(UnpackChannelData2);
 
@@ -389,6 +405,11 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
     }
 
     if (hdr->type == CRSF_FRAMETYPE_RC_CHANNELS_PACKED) {
+      if (securityType != 0) { // LEA-GCM or ASCON -> OFF
+        DebugSerial.println("Security type updated to OFF");
+        NVIC_SystemReset(); // Restart the system
+        return;
+      }
       crsf_channels_t crsf_channels = generateCrsfChannels((uint32_t*)&hdr->data[0]);
       printCrsfChannels(&crsf_channels);
       flight_controller.write(buf, len);
@@ -407,19 +428,20 @@ void setup() {
   Serial.setTx(PC_10);
   Serial.setRx(PC_11);
 
+  // Debug: UART5
+  DebugSerial.setTx(PC_12);
+  DebugSerial.setRx(PD_2);
+  DebugSerial.begin(420000);
+
+  DebugSerial.println("Starting RX RC Module ...");
+  securityIsReady = lea_gcm.init();
+
   flight_controller.begin();
   flight_controller.onForward = &to_crsf_receiver;
 
   crsf_receiver.begin();
   crsf_receiver.onForward = &to_flight_controller;
   // crsf_receiver.onPacketChannels = &packetChannels;
-
-  // Debug: UART5
-  DebugSerial.setTx(PC_12);
-  DebugSerial.setRx(PD_2);
-  DebugSerial.begin(420000);
-
-  lea_gcm.init();
 
   // handshake
   // uint8_t hello_msg[] = {MSP_HELLO};
