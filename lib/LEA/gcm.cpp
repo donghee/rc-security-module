@@ -1,4 +1,5 @@
 #include "gcm.h"
+#include "ascon128.h"
 
 #include <fstream>
 
@@ -115,9 +116,9 @@ int GCM::encrypt(const uint8_t *plaintext, int plaintext_len, uint8_t *ciphertex
 {
     int result;
 
-    // result = GCM4LEA_set_enc_params(&gcm_TX, (uint8_t *)plaintext, plaintext_len, N, 12);
+    result = GCM4LEA_set_enc_params(&gcm_TX, (uint8_t *)plaintext, plaintext_len, N, 12);
     // by Joungil Yun (2025.02.05.)
-    result = GCM4LEA_set_enc_params(&gcm_TX, (uint8_t *)plaintext, plaintext_len, N_GCM, 12); // N 16바이트 vs. N_GCM 12바이트
+    // result = GCM4LEA_set_enc_params(&gcm_TX, (uint8_t *)plaintext, plaintext_len, N_GCM, 12); // N 16바이트 vs. N_GCM 12바이트
     if (result < 0) {
         return -1;
     }
@@ -177,6 +178,7 @@ int GCM::decrypt(const uint8_t *ciphertext, uint8_t ciphertext_len, uint8_t *pla
         // Activate FAIL SAFE mode!!!!!!!!!!!!!!!!!!!!!!
         // 재전송 공격 가능성 추정
         initStatus = -1;
+        DebugSerial.println("Counter failed");
         return -1;
     }
 
@@ -204,23 +206,24 @@ int GCM::decrypt(const uint8_t *ciphertext, uint8_t ciphertext_len, uint8_t *pla
     }
 
     // 2025. 2  Print RX Nonce
-    DebugSerial.print("RX COUNTER: ");
-    DebugSerial.print(COUNTER_RX);
-    DebugSerial.println("");
-    DebugSerial.print("RX Nonce: ");
-    for (int i = 0; i < 16; i++)
-    {
-        DebugSerial.print(N[i], HEX);
-        DebugSerial.print(" ");
-    }
-    DebugSerial.println("");
-
+    // DebugSerial.print("RX COUNTER: ");
+    // DebugSerial.print(COUNTER_RX);
+    // DebugSerial.println("");
+    // DebugSerial.print("RX Nonce: ");
+    // for (int i = 0; i < 16; i++)
+    // {
+    //     DebugSerial.print(N[i], HEX);
+    //     DebugSerial.print(" ");
+    // }
+    // DebugSerial.println("");
+  
     // Tbits = 16 for nonce sync, so ciphertext + 2 is pointer of gcm_RX.T
-    // result =  GCM4LEA_set_dec_params(&gcm_RX, ciphertext + 4, plaintext_len, N, 12, ciphertext + 2);
+    result =  GCM4LEA_set_dec_params(&gcm_RX, ciphertext + 4, plaintext_len, N, 12, ciphertext + 2);
     // by Joungil Yun (2025.02.05.)
-    result =  GCM4LEA_set_dec_params(&gcm_RX, ciphertext + 4, plaintext_len, N_GCM, 12, ciphertext + 2); //N 16바이트 vs. N_GCM 12바이트
+    // result =  GCM4LEA_set_dec_params(&gcm_RX, ciphertext + 4, plaintext_len, N_GCM, 12, ciphertext + 2); //N 16바이트 vs. N_GCM 12바이트
 
     if (result < 0) {
+        DebugSerial.println("GCM4LEA_set_dec_params failed");
         return -1;
     }
 
@@ -228,6 +231,7 @@ int GCM::decrypt(const uint8_t *ciphertext, uint8_t ciphertext_len, uint8_t *pla
     result = GCM4LEA_dec(&gcm_RX);
     stop[2] = ARM_CM_DWT_CYCCNT;
     if (result < 0) {
+        DebugSerial.println("GCM4LEA_dec failed");
         return -1;
     }
 

@@ -4,10 +4,12 @@
 #include "ota.h"
 
 #include "gcm.h"
+#include "ascon128.h"
 
 #define MAX_PLAINTEXT_PACKET_SIZE 32
 
 GCM lea_gcm;
+Ascon128 ascon;
 
 // connected to flight controller
 CrsfSerial flight_controller(Serial1, 420000);
