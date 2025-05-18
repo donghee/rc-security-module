@@ -6,10 +6,12 @@
 #include "ota.h"
 
 #include "gcm.h"
+#include "ascon128.h"
 
 #define MAX_CIPHERTEXT_PACKET_SIZE 32
 
 GCM lea_gcm;
+Ascon128 ascon;
 
 // connected to radio transmitter
 CrsfSerial radio_transmitter(Serial1, 400000);
@@ -25,7 +27,7 @@ static unsigned long lastSendMspTime = 0;
 static uint8_t securityType = 0;
 static int securityIsReady = -1;
 static unsigned long resetTime = 0;
-static bool resetScheduled = false;
+bool resetScheduled = false;
 
 void encryptedPacketChannels(uint8_t* buf, uint8_t len);
 
@@ -270,11 +272,14 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
          	  EEPROM.write(0x00, securityType); // 0: Off, 1: LEA-GCM, 2: ASCON
             DebugSerial.print("Set Security Type: ");
             DebugSerial.println(securityType);
+
+            //delay(3000);
+            //NVIC_SystemReset();
           
-            // Reset the system after 3 seconds, When new security type is set
-            resetTime = millis() + 3000;
+           // Reset the system after 1 seconds, When new security type is set
+            // resetTime = millis() + 1000;
             resetScheduled = true;
-            DebugSerial.println("System will reset in 3 seconds...");
+            // DebugSerial.println("System will reset in 1 seconds...");
           }
         }
       }
@@ -372,8 +377,8 @@ void setup() {
 
   DebugSerial.println("Starting TX RC Module ...");
   DebugSerial.print("Security Type: ");
-  DebugSerial.println(securityType);
   securityType = EEPROM.read(0x00);
+  DebugSerial.println(securityType);
   securityIsReady = lea_gcm.init();
 
   // SKIP handshake
@@ -381,14 +386,21 @@ void setup() {
 }
 
 void loop() {
+  if (resetScheduled) {
+    delay(4000);
+    DebugSerial.println("Executing scheduled reset now...");
+    NVIC_SystemReset();
+    return;
+  }
+
   radio_transmitter.loop();
   crsf_transmitter.loop();
 
   // 비동기 리셋 체크
-  if (resetScheduled && millis() >= resetTime) {
-    DebugSerial.println("Executing scheduled reset now...");
-    NVIC_SystemReset();
-  }
+  // if (resetScheduled && millis() >= resetTime) {
+  //   DebugSerial.println("Executing scheduled reset now...");
+  //   NVIC_SystemReset();
+  // }
 
   return; // SKIP handshake
 
