@@ -86,13 +86,49 @@ sequenceDiagram
 - 수신기(RX)에서 송신기(TX)로 텔레메트리 데이터 전달
 - 양방향 통신 지원
 
-## Setup
+# 펌웨어 빌드 방법 
 
-PlatformIO 설치
+## 1. 개발 환경 설치 
+
+1. 개발에 필요한 라이브러리와 컴파일러 설치 
+
+```sh
+make setup
+```
+
+2. 도커 이미지 빌드
+
+```sh
+make build-docker-image
+```
+
+## 2. 개발 환경 컨테이너 실행
+
+도커 컨테이너 실행. (빌드 하기전에 실행 해두어야 함.)
+
+```sh
+make run-docker-container
+```
+
+## 3. 펌웨어 빌드
+
+TX 펌웨어 빌드
+```sh
+make build-tx
+```
+
+RX 펌웨어 빌드
+```sh
+make build-rx
+```
+
+## 4. 펌웨어 업로드
+
+펌웨어 빌드를 하면 다음 위치에 펌웨어 파일이 생긴다.
 
 ```
-curl -fsSL -o get-platformio.py https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py
-python3 get-platformio.py
+.pio/build/TX/firmware.elf
+.pio/build/RX/firmware.elf
 ```
 
-
+STM MCU 프로그래머stlink v3을 이용해서 펌웨어를 타겟 보드에 올린다.
