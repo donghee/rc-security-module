@@ -15,8 +15,7 @@ void P8(ascon_state_t* s) { P8ROUNDS(s); }
 
 #endif
 
-#if (defined(ASCON_AEAD_RATE) && ASCON_AEAD_RATE == 8) && \
-    !ASCON_INLINE_PERM && ASCON_UNROLL_LOOPS
+#if (defined(ASCON_AEAD_RATE))
 
 void P6(ascon_state_t* s) { P6ROUNDS(s); }
 

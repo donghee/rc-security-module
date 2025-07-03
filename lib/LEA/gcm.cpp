@@ -1,5 +1,4 @@
 #include "gcm.h"
-#include "ascon128.h"
 
 #include <fstream>
 

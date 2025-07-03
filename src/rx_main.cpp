@@ -201,9 +201,34 @@ bool decryptToChannels(const crsf_channels_encrypted_t* src, uint8_t len, crsf_c
     }
     securityType = src->securityType;
 
+    // DebugSerial.print("Security type: ");
+    // DebugSerial.println(src->securityType);
+
     // uint8_t len = sizeof(src->raw);
     // Decrypt the channel data
-    int plaintext_len = lea_gcm.decrypt(&src->raw[0], len, plaintext);
+    int plaintext_len = -1;
+    if (securityType == 1)
+      plaintext_len = lea_gcm.decrypt(&src->raw[0], len, plaintext);
+    if (securityType == 2) {
+        DebugSerial.print("RX Ascon Encryption: ");
+        DebugSerial.print(" ");
+        DebugSerial.print(len);
+        DebugSerial.print(" ");
+        for (int i = 0; i < len; i++) {
+            DebugSerial.print(src->raw[i], HEX);
+            DebugSerial.print(" ");
+        }
+        DebugSerial.println();
+        plaintext_len = ascon.decrypt(&src->raw[0], len, plaintext);
+    }
+
+    // DebugSerial.print("Ascon Buffer: ");
+    // for (int i = 0; i < plaintext_len; i++) {
+    //     DebugSerial.print(plaintext[i], HEX);
+    //     DebugSerial.print(" ");
+    // }
+    // DebugSerial.println();
+
     if (plaintext_len < 0) {
         DebugSerial.println("Decryption failed");
         return false;
@@ -368,26 +393,26 @@ void to_flight_controller(const uint8_t* buf, uint8_t len) {
       lastRecvRcTime = currentTime;
 
       // TODO RX interval up to 7.5ms
-      if (counter % 10 == 0) {
-        DebugSerial.print("RX interval: ");
-        DebugSerial.print(timeDiff);
-        DebugSerial.println(" ms");
-      }
-
-      DebugSerial.print("RX RC Channels ENCRYPTED: ");
-      for (int i = 0; i < 11; i++) {
-        DebugSerial.print(hdr->data[i], HEX);
-        DebugSerial.print(" ");
-      }
-      DebugSerial.println();
+      // if (counter % 10 == 0) {
+      //   DebugSerial.print("RX interval: ");
+      //   DebugSerial.print(timeDiff);
+      //   DebugSerial.println(" ms");
+      // }
+      //
+      // DebugSerial.print("RX RC Channels ENCRYPTED: ");
+      // for (int i = 0; i < 11; i++) {
+      //   DebugSerial.print(hdr->data[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
 
       uint32_t UnpackChannelData2[CRSF_NUM_CHANNELS] = {0};
 
       uint8_t ciphertext_len = hdr->frame_size - 1 - 2; // 1: packetType, 2: crc ?
       decryptToChannels((crsf_channels_encrypted_t *)&hdr->data[0], ciphertext_len, (crsf_channels_t *)plaintext);
       generateChannelData((crsf_channels_t *)plaintext, UnpackChannelData2);
-      DebugSerial.print("RX Encrypted RC Channels: ");
-      printChannelData(UnpackChannelData2);
+      // DebugSerial.print("RX Encrypted RC Channels: ");
+      // printChannelData(UnpackChannelData2);
 
       crsf_channels_t crsf_channels = generateCrsfChannels(UnpackChannelData2);
 
