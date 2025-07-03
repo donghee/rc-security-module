@@ -13,7 +13,7 @@
 
 /* unroll permutation loops */
 #ifndef ASCON_UNROLL_LOOPS
-#define ASCON_UNROLL_LOOPS 1
+#define ASCON_UNROLL_LOOPS 0
 #endif
 
 #endif /* CONFIG_H_ */

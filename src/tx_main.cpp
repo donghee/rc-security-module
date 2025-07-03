@@ -192,13 +192,14 @@ void generateChannelData(const crsf_channels_t* ch, uint32_t* channelData) {
     channelData[15] = ch->ch15;
 }
 
-void encryptedChannels(const crsf_channels_t* src, crsf_channels_encrypted_t* dest, bool isHighAux) {
+void encryptedChannels(const crsf_channels_t* src, uint8_t securityType_, crsf_channels_encrypted_t* dest, bool isHighAux) {
     uint8_t buf[CRSF_MAX_PACKET_SIZE];
     uint8_t channelData_ch5_ch12;
     uint8_t ciphertext[MAX_CIPHERTEXT_PACKET_SIZE];
 
     // Initialize the encrypted channels structure
     dest->packetType = 0;  // PACKET_TYPE_RC_DATA
+    dest->securityType = securityType_;  // Security type
     dest->free = 0;        // Reserved bits set to 0
     dest->isHighAux = isHighAux ? 1 : 0;
     dest->ch4 = (src->ch4 > CRSF_CHANNEL_VALUE_MID) ? 1 : 0;  // AUX1 as binary value
@@ -219,7 +220,49 @@ void encryptedChannels(const crsf_channels_t* src, crsf_channels_encrypted_t* de
 
     // Encrypt the channel data
     uint8_t buf_len = sizeof(tempChannels) + sizeof(channelData_ch5_ch12);
-    int ciphertext_len = lea_gcm.encrypt(buf, buf_len, ciphertext);
+
+    int ciphertext_len = -1;
+
+    if (securityType_ == 1) { // LEA-GCM
+      ciphertext_len = lea_gcm.encrypt(buf, buf_len, ciphertext);
+      DebugSerial.print("LEA-GCM Encryption: ");
+      DebugSerial.print(ciphertext_len);
+      DebugSerial.print(" ");
+      for (int i = 0; i < ciphertext_len; i++) {
+        DebugSerial.print(ciphertext[i], HEX);
+        DebugSerial.print(" ");
+      }
+      DebugSerial.println();
+    }
+    if (securityType_ == 2) { // ASCON
+      ciphertext_len = ascon.encrypt(buf, buf_len, ciphertext);
+      DebugSerial.print("Ascon Encryption: ");
+      DebugSerial.print(ciphertext_len);
+      DebugSerial.print(" ");
+      for (int i = 0; i < ciphertext_len; i++) {
+        DebugSerial.print(ciphertext[i], HEX);
+        DebugSerial.print(" ");
+      }
+      DebugSerial.println();
+
+      // uint8_t plaintext[6] = {0};
+      // int plaintext_len = ascon.decrypt(ciphertext, ciphertext_len, plaintext);
+      // DebugSerial.print("Ascon Decryption: ");
+      // DebugSerial.print(" ");
+      // for (int i = 0; i < plaintext_len; i++) {
+      //   DebugSerial.print(plaintext[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
+      //
+      // DebugSerial.print("Ascon Buffer: ");
+      // for (int i = 0; i < buf_len; i++) {
+      //   DebugSerial.print(buf[i], HEX);
+      //   DebugSerial.print(" ");
+      // }
+      // DebugSerial.println();
+    }
+
     if (ciphertext_len < 0) {
         DebugSerial.println("Encryption failed");
         return;
@@ -295,7 +338,7 @@ void to_crsf_transmitter(const uint8_t* buf, uint8_t len) {
       // UnpackChannels4x10ToUInt11(&rc.chHigh, &UnpackChannelData[4]);
 
       // DebugSerial.print("TX RC Security Module Channels: ");
-      encryptedChannels((crsf_channels_t *)&hdr->data, &ch_encrypted, false);
+      encryptedChannels((crsf_channels_t *)&hdr->data, securityType, &ch_encrypted, false);
 
       // DebugSerial.print("Encrypted TX RC Channels: ");
       // for (int i = 0; i < 10; i++) {
@@ -377,9 +420,12 @@ void setup() {
 
   DebugSerial.println("Starting TX RC Module ...");
   DebugSerial.print("Security Type: ");
-  securityType = EEPROM.read(0x00);
+  securityType = EEPROM.read(0x00); // 0: Off, 1: LEA-GCM, 2: ASCON
   DebugSerial.println(securityType);
   securityIsReady = lea_gcm.init();
+  securityIsReady = ascon.init();
+  DebugSerial.print("Security is ready: ");
+  DebugSerial.println(securityIsReady);
 
   // SKIP handshake
   handshakeState = COMPLETED;
