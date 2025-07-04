@@ -33,3 +33,13 @@ build-using-container:
 
 build: build-tx build-rx
 	@echo 'Successfully built RC Security Module TX and RX firmwares'
+
+debug-tx: build-tx
+	# Before execution, PyOCD needs to be run. When running PyOCD, it's necessary to select a hardware debugger.
+	@echo 'pyocd gdbserver --persist -t stm32f479iihx -p 3335 -T 4446'
+	gdb-multiarch -x .pioinit-tx
+
+debug-rx: build-rx
+	# Before execution, PyOCD needs to be run. When running PyOCD, it's necessary to select a hardware debugger.
+	@echo 'pyocd gdbserver --persist -t stm32f479iihx -p 3336 -T 4447'
+	gdb-multiarch -x .pioinit-rx

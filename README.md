@@ -86,7 +86,7 @@ sequenceDiagram
 - 수신기(RX)에서 송신기(TX)로 텔레메트리 데이터 전달
 - 양방향 통신 지원
 
-# 펌웨어 빌드 방법 
+# RC 보안 모듈 펌웨어 빌드 방법 
 
 ## 1. 개발 환경 설치 
 
@@ -131,4 +131,16 @@ make build-rx
 .pio/build/RX/firmware.elf
 ```
 
-STM MCU 프로그래머stlink v3을 이용해서 펌웨어를 타겟 보드에 올린다.
+TX 펌웨어 업로드
+
+```
+make debug-tx
+```
+
+RX 펌웨어 업로드
+
+```
+make debug-cx
+```
+
+GUI를 사용할경우 STM MCU 프로그래머stlink v3을 이용해서 컴파일된 펌웨어를 타겟 보드에 올린다.
