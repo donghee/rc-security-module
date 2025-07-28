@@ -34,6 +34,6 @@
 .pio
 Debug
 
-docs
+#docs
 
 .vscode
