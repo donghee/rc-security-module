@@ -1,3 +1,5 @@
+#!killall pyocd
+!pyocd gdbserver -t stm32f479iihx -u 16004A002933353739303541 -p 3336 -T 4447 & # RX STLink-V2 Clone Blue
 set pagination off
 
 file .pio/build/RX/firmware.elf

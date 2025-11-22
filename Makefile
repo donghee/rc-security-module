@@ -15,14 +15,10 @@ setup: build-docker-image
 	sudo udevadm control --reload
 	sudo udevadm trigger
 
-prebuild:
-	sudo chown -R `id -un` .pio/build
-	git pull --rebase --autostash
-
-build-tx: prebuild
+build-tx:
 	pio run -t clean -e TX && pio debug -e TX
 
-build-rx: prebuild
+build-rx:
 	pio run -t clean -e RX && pio debug -e RX
 
 build-using-container:
